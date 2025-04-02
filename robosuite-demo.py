@@ -17,8 +17,9 @@ def policy(obs_vector):
     action = np.random.randn(*env.action_spec[0].shape) * 0.1
     return action
 
+obs, reward, done, info = env.step([0,0,0,0,0,0,0])  # take action in the environment
 for i in range(1000):
-    action = policy(obs_vector)
+    action = policy(obs)
 
     #action = [float(input('action[0]')), 0, 0, 0, 0, 0, 0]
     #print(action)
