@@ -8,6 +8,9 @@ env = suite.make(
     has_renderer=True,
     has_offscreen_renderer=True,
     use_camera_obs=True,
+    camera_heights=40,
+    camera_widths=40,
+    camera_names="frontview"
 )
 
 # reset the environment
@@ -18,11 +21,14 @@ def policy(obs_vector):
     return action
 
 obs, reward, done, info = env.step([0,0,0,0,0,0,0])  # take action in the environment
+
+print(type(obs["frontview_image"]))
 for i in range(1000):
     action = policy(obs)
 
     #action = [float(input('action[0]')), 0, 0, 0, 0, 0, 0]
     #print(action)
     obs, reward, done, info = env.step(action)  # take action in the environment
-    print(obs, reward, done, info)
+    if done:
+        break
     env.render()  # render on display
