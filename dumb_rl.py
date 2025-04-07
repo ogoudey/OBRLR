@@ -56,6 +56,7 @@ def main():
     cum_rewards = []
     new_visits_over_episodes = []
     visits_per_episode = []
+    closest_distances = []
     
     G = nx.Graph()
     
@@ -72,6 +73,7 @@ def main():
             grades[grade] = False
         cum_reward = 0
         new_visits = 0
+        closest_distance = 999
         per_episode_new_visits = 0
         visits = set()
         states, actions, rewards = [], [], []
@@ -100,12 +102,13 @@ def main():
             rewards.append(reward)
             cum_reward += reward
             obs_vector = (round(obs['robot0_eef_pos'][0], 1), round(obs['robot0_eef_pos'][1], 1), round(obs['robot0_eef_pos'][2], 1))
-            
+            closest_distance = min(closest_distance, np.linalg.norm(obs['robot0_eef_pos'] - obs['cube_pos']))
                
            
             #print(obs, reward, done, info)
 
             if done:
+            
                 for retrospec in range(0, len(states)):
                     _return = 0.0
                     for i in range(retrospec, len(states)):
@@ -116,6 +119,7 @@ def main():
                 cum_rewards.append(cum_reward)
                 new_visits_over_episodes.append(new_visits)
                 visits_per_episode.append( per_episode_new_visits)
+                closest_distances.append(closest_distance)
                 break
 
 
@@ -133,19 +137,26 @@ def main():
     ax3 = ax1.twinx()
     ax3.plot(range(0, num_episodes), visits_per_episode, color='blue')
     ax3.set_ylabel('visits', color='blue')
-    plt.title('cumulative rewards, new visits, and visited states')
+    ax4 = ax1.twinx()
+    ax4.plot(range(0, num_episodes), closest_distances, color='yellow')
+    ax4.set_ylabel('closest distance', color='yellow')
+    ax4.tick_params(axis='y', labelcolor='yellow')
+    plt.title('cumulative rewards, new visits, visited states, closest')
     plt.show()
     
     print(r.qtable[states[retrospec]][actions[retrospec]])
     return r
 
+
+# Rewards based on how close the eef is to the cube, by grades
+# So if there are 10 grades, moving from 1m away to .79m away gives 1 reward and 2 reward at approprate times, for passing .9m and .8m respectively.
 def __reward(initial_distance, grades, eef_pos, cube_pos):
     distance = np.linalg.norm(eef_pos - cube_pos)
 
     for grade in grades.keys():
         if initial_distance / len(grades.keys()) * grade > distance and not grades[grade]:
             grades[grade] = True
-            print("Passed", initial_distance / len(grades.keys()) * grade, "with", distance)
+            print("Passed", initial_distance / len(grades.keys()) * grade, "with", distance, "Reward:", len(grades.keys()) - grade)
             return len(grades.keys()) - grade
     return 0
 
@@ -172,23 +183,6 @@ def visualize(r):
         env.render()  # render on display
         if done:
             break
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 if __name__ == "__main__":
