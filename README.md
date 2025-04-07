@@ -5,7 +5,7 @@ Tabular Monte Carlo: the state/observation space (`obs_vector`) is a truncated x
 
 Un-tuned, 10 episodes, gamma=0.99:
 ```
-
+python3 dumb_rl.py
 ```
 ![Preliminary results](dumb_rl.png)
 The yellow line is what we care about (closest distance to the cube), but the visualization of the simulation suggests that distance becomes less important as we move closer, since the eef is fairly huge (can it even get closer than grade 7?).
