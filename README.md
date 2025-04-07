@@ -8,7 +8,7 @@ Un-tuned, 10 episodes, gamma=0.99:
 python3 dumb_rl.py
 ```
 ![Preliminary results](dumb_rl.png)
-The yellow line is what we care about (closest distance to the cube), but the visualization of the simulation suggests that distance becomes less important as we move closer, since the eef is fairly huge (can it even get closer than grade 7?).
+The yellow line is what we care about (closest distance to the cube), but the visualization of the simulation suggests that distance becomes less important as we move closer, since the eef is fairly huge (can it even get closer than grade 7?). It's bumping into the table and maybe trying to twist itself to get closer (?).
 
 ## Real Robot (WIP)
 1. Download the python wheel [here](https://artifactory.kinovaapps.com/ui/repos/tree/General/generic-public/kortex/API/3.3.0/kortex_api-3.3.0.2-py3-none-any.whl)
