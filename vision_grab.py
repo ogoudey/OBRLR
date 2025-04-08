@@ -190,5 +190,5 @@ def visualize(r):
 
 
 if __name__ == "__main__":
-    r = main(imshow=False)
+    r = main(imshow=True)
     visualize(r)
