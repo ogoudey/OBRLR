@@ -103,7 +103,7 @@ def to_state(observation, state):
             print(key, "did not get updated because it was not seen.")
     return state
 
-def main(imshow=True, has_renderer=False):
+def main(imshow=True, has_renderer=True):
     env = make_env(has_renderer=has_renderer)
 
     r = Robot()
