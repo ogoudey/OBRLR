@@ -1,6 +1,9 @@
 import numpy as np
 import robosuite as suite
+import torch
+from PIL import Image
 
+import time
 import random
 from collections import defaultdict
 from itertools import product
@@ -9,22 +12,57 @@ import tqdm
 import matplotlib.pyplot as plt
 import networkx as nx
 
+import torch
+
+import cv2
+
+import os
+
+
 class Robot:
     def __init__(self):
-        
+        self.vision_model = torch.hub.load('ultralytics/yolov5', 'custom', path='vision2/best.pt', force_reload=True) # path is to the model originally in runs/expX/weights/
         
 
     def policy(self, obs_vector, epsilon=0.1):
-        action = None
+        action = np.random.randn(7) * 0.1
         return action
 
-def main():
+def detect():
+    cap = cv2.VideoCapture(0)      
     env = suite.make(
         env_name="Lift",
         robots="Kinova3",
         has_renderer=False,
         has_offscreen_renderer=True,
         use_camera_obs=True,
+        horizon = 1000,
+        camera_heights=400,
+        camera_widths=400,
+        camera_names="sideview",
+    )
+
+    r = Robot()
+    while True:
+        obs, reward, done, info = env.step(r.policy(None))  # take action in the environment   
+        img = Image.fromarray(obs["sideview_image"], 'RGB')
+        results = r.vision_model(img).render()
+        cv2.imshow("Detections", results[0])
+        key = cv2.waitKey(30)  
+        if key & 0xFF == 27:  # ESC key to break out of the loop
+            break
+
+def main(imshow=True):
+    env = suite.make(
+        env_name="Lift",
+        robots="Kinova3",
+        has_renderer=False,
+        has_offscreen_renderer=True,
+        use_camera_obs=True,
+        horizon = 1000,
+        camera_heights=400,
+        camera_widths=400,
+        camera_names="sideview",
     )
 
     r = Robot()
@@ -47,8 +85,12 @@ def main():
         grades[num] = False
     ###
 
+    # Viewing stuff
+    if imshow:
+        cap = cv2.VideoCapture(0)  
+    ###
 
-
+    print("Starting episodes...")
     for episode in tqdm.tqdm(range(0, num_episodes)):
         
         env.reset() # This call could be improved. We do not need to reset the whole environment, just the positions.
@@ -63,22 +105,34 @@ def main():
         for i in range(0, episode_length):
             action = r.policy(obs_vector)
             obs, reward, done, info = env.step(action)  # take action in the environment
+            if imshow:
+                img = Image.fromarray(obs["sideview_image"], 'RGB')
+                results = r.vision_model(img).render()
+                cv2.imshow("Detections", results[0])
+                key = cv2.waitKey(30) 
+                if key & 0xFF == 27:
+                    break
+            
             reward = __reward(initial_distance, grades, obs['robot0_eef_pos'], obs['cube_pos'])
 
             if i == episode_length - 1:
                 done = True
 
             obs_vector = (round(obs['robot0_eef_pos'][0], 1), round(obs['robot0_eef_pos'][1], 1), round(obs['robot0_eef_pos'][2], 1))
+             
 
             if done:
-
                 break
 
 
         env.reset()
         obs, __, __, __ = env.step([0,0,0,0,0,0,0])
         obs_vector = (round(obs['robot0_eef_pos'][0], 1), round(obs['robot0_eef_pos'][1], 1), round(obs['robot0_eef_pos'][2], 1)) # override
-        
+    
+    
+    if imshow:
+        cap.release()
+        cv2.destroyAllWindows()   
     return r
 
 
@@ -136,5 +190,5 @@ def visualize(r):
 
 
 if __name__ == "__main__":
-    r = main()
+    r = main(imshow=False)
     visualize(r)
