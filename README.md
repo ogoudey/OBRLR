@@ -10,6 +10,10 @@ python3 dumb_rl.py
 ![Preliminary results](dumb_rl.png)
 The yellow line is what we care about (closest distance to the cube), but the visualization of the simulation suggests that distance becomes less important as we move closer, since the eef is fairly huge (can it even get closer than grade 7?). It's bumping into the table and maybe trying to twist itself to get closer (?).
 
+### Vision-based
+Using predictions from a customized YOLOv5 model.
+
+
 ## Real Robot (WIP)
 1. Download the python wheel [here](https://artifactory.kinovaapps.com/ui/repos/tree/General/generic-public/kortex/API/3.3.0/kortex_api-3.3.0.2-py3-none-any.whl)
 2. `pip install <path_to_that_download>`
@@ -23,3 +27,22 @@ The yellow line is what we care about (closest distance to the cube), but the vi
 
 ### Requirements (for vision)
 `pip install torch, torchvision, pycocotools`
+
+### Acknowledgements
+@software{yolov5,
+ title = {Ultralytics YOLOv5},
+ author = {Glenn Jocher},
+ year = {2020},
+ version = {7.0},
+ license = {AGPL-3.0},
+ url = {https://github.com/ultralytics/yolov5},
+ doi = {10.5281/zenodo.3908559},
+ orcid = {0000-0001-5950-6979}
+}
+
+@inproceedings{robosuite2020,
+  title={robosuite: A Modular Simulation Framework and Benchmark for Robot Learning},
+  author={Yuke Zhu and Josiah Wong and Ajay Mandlekar and Roberto Mart\'{i}n-Mart\'{i}n and Abhishek Joshi and Soroush Nasiriany and Yifeng Zhu and Kevin Lin},
+  booktitle={arXiv preprint arXiv:2009.12293},
+  year={2020}
+}
