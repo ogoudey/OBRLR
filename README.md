@@ -12,7 +12,10 @@ The yellow line is what we care about (closest distance to the cube), but the vi
 
 ### Vision-based
 Using predictions from a customized YOLOv5 model.
-
+```
+python3 vision_grab.py
+```
+which so far is just the ``vision'' part of ``vision_grab''
 
 ## Real Robot (WIP)
 1. Download the python wheel [here](https://artifactory.kinovaapps.com/ui/repos/tree/General/generic-public/kortex/API/3.3.0/kortex_api-3.3.0.2-py3-none-any.whl)
