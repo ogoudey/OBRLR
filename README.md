@@ -21,7 +21,7 @@ Change line 106 (main's header) to show/hide simulation rendering or camera.
 1. Download the python wheel [here](https://artifactory.kinovaapps.com/ui/repos/tree/General/generic-public/kortex/API/2.2.0/kortex_api-2.2.0.post31-py3-none-any.whl)
 2. `pip install <path_to_that_download>`
 (The above is covered by the Kortex [repo](https://github.com/Kinovarobotics/Kinova-kortex2_Gen3_G3L/tree/master/api_python/examples)
-3. [Examples](`git clone https://github.com/Kinovarobotics/Kinova-kortex2_Gen3_G3L`) 
+3. Some [examples](`git clone https://github.com/Kinovarobotics/Kinova-kortex2_Gen3_G3L`) using the API.
 
 
 ### Requirements (for vision)
