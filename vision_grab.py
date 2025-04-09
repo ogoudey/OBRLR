@@ -1,5 +1,7 @@
 import numpy as np
 import robosuite as suite
+from robosuite.utils import transform_utils
+import camera_utils as cu
 import torch
 from PIL import Image
 
@@ -8,6 +10,7 @@ import random
 from collections import defaultdict
 from itertools import product
 import tqdm
+
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -28,42 +31,80 @@ class Robot:
         action = np.random.randn(7) * 0.1
         return action
 
-def detect():
-    cap = cv2.VideoCapture(0)      
-    env = suite.make(
+def make_env(has_renderer=True):
+    return suite.make(
         env_name="Lift",
         robots="Kinova3",
-        has_renderer=False,
+        has_renderer=has_renderer,
         has_offscreen_renderer=True,
         use_camera_obs=True,
         horizon = 1000,
         camera_heights=400,
         camera_widths=400,
         camera_names="sideview",
+        camera_depths=True,
     )
+
+def detect():
+    cap = cv2.VideoCapture(0)      
+    env = make_env()
 
     r = Robot()
     while True:
         obs, reward, done, info = env.step(r.policy(None))  # take action in the environment   
         img = Image.fromarray(obs["sideview_image"], 'RGB')
-        results = r.vision_model(img).render()
-        cv2.imshow("Detections", results[0])
+        result = r.vision_model(img)
+        renderings = result.render()
+        cv2.imshow("Detections", renderings[0])
         key = cv2.waitKey(30)  
         if key & 0xFF == 27:  # ESC key to break out of the loop
             break
 
-def main(imshow=True):
-    env = suite.make(
-        env_name="Lift",
-        robots="Kinova3",
-        has_renderer=False,
-        has_offscreen_renderer=True,
-        use_camera_obs=True,
-        horizon = 1000,
-        camera_heights=400,
-        camera_widths=400,
-        camera_names="sideview",
-    )
+def detect_from_env(env):
+    #cap = cv2.VideoCapture(0)      
+
+    r = Robot()
+
+    obs, reward, done, info = env.step(r.policy(None))  # take action in the environment   
+    img = Image.fromarray(obs["sideview_image"], 'RGB')
+    result = r.vision_model(img)
+    return box_centers()
+
+
+
+def positions_from_labelled_pixels(depth, env, labelled_pixel_dict):
+    object_3d_positions = dict()
+    expanded_depth = depth[np.newaxis, ...]
+
+    world_to_pixel_transform = cu.get_camera_transform_matrix(env.sim, "sideview", 400, 400)
+    camera_to_world_transform = np.linalg.inv(world_to_pixel_transform)
+    for obj in labelled_pixel_dict.keys():
+        points = cu.transform_from_pixels_to_world(np.array([labelled_pixel_dict[obj]]), expanded_depth, camera_to_world_transform)
+        object_3d_positions[obj] = points[0]
+    return object_3d_positions
+
+def box_centers(result):
+    centers = dict()
+    box_per_obj_cat = defaultdict(lambda : False) # Right now we are gauranteed one box per item. Not necesarily the best box...
+    for detection in result.xywh[0]:
+        if not box_per_obj_cat[detection[5]]:
+            centers[result.names[detection[5].item()]] = (detection[1].item(), detection[2].item())
+    
+
+    return centers
+
+def to_state(observation, state):
+    print(observation)
+    print(state)
+    for obj in observation.keys():
+        state[obj] = observation[obj]
+    for key in state.keys():
+        if key not in observation.keys():
+            print(key, "did not get updated because it was not seen.")
+    return state
+
+def main(imshow=True, has_renderer=True):
+    env = make_env(has_renderer=has_renderer)
 
     r = Robot()
     
@@ -98,29 +139,30 @@ def main(imshow=True):
             grades[grade] = False
         
         obs, __, __, __ = env.step([0,0,0,0,0,0,0])
-        obs_vector = (round(obs['robot0_eef_pos'][0], 1), round(obs['robot0_eef_pos'][1], 1), round(obs['robot0_eef_pos'][2], 1)) # Change to some non-linear function of pixels
+        state = defaultdict(lambda : "UNDETECTED")
+        state = to_state(observe(env, r, obs), state)
+        
         
         initial_distance = np.linalg.norm(obs['robot0_eef_pos'] - obs['cube_pos'])
         
         for i in range(0, episode_length):
-            action = r.policy(obs_vector)
+            action = r.policy(state)
             obs, reward, done, info = env.step(action)  # take action in the environment
-            if imshow:
-                img = Image.fromarray(obs["sideview_image"], 'RGB')
-                results = r.vision_model(img).render()
-                cv2.imshow("Detections", results[0])
-                key = cv2.waitKey(30) 
-                if key & 0xFF == 27:
-                    break
+            state = to_state(observe(env, r, obs), state) # EEF position, cube position
+            # KF?
+            print("Cube | Computed:", state["cube"], "| Objective:", obs['cube_pos'])
+            print("Eef | Computed:", state["eef"], "| Objective:", obs['robot0_eef_pos'])
             
-            reward = __reward(initial_distance, grades, obs['robot0_eef_pos'], obs['cube_pos'])
+            
+            reward = __reward(initial_distance, grades, obs['robot0_eef_pos'], obs['cube_pos']) # remains objective
 
             if i == episode_length - 1:
                 done = True
 
             obs_vector = (round(obs['robot0_eef_pos'][0], 1), round(obs['robot0_eef_pos'][1], 1), round(obs['robot0_eef_pos'][2], 1))
              
-
+            if has_renderer:
+                env.render()
             if done:
                 break
 
@@ -135,6 +177,18 @@ def main(imshow=True):
         cv2.destroyAllWindows()   
     return r
 
+def observe(env, r, obs, imshow=True):
+    img = Image.fromarray(obs["sideview_image"], 'RGB')
+    result = r.vision_model(img)
+    depth_img = obs["sideview_depth"]
+    if imshow:
+        renderings = result.render()
+        cv2.imshow("Detections", renderings[0])
+        key = cv2.waitKey(30) 
+    centers = box_centers(result) # centers of a box for each detected object
+    positions = positions_from_labelled_pixels(depth_img, env, centers)
+    return positions
+    
 
 # Rewards based on how close the eef is to the cube, by grades
 # So if there are 10 grades, moving from 1m away to .8m away gives 1 reward and 2 reward at approprate times.
