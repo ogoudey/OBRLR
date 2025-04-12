@@ -23,6 +23,9 @@ import os
 
 
 class Robot:
+    # Description #
+    #             #
+    
     def __init__(self):
         self.vision_model = torch.hub.load('ultralytics/yolov5', 'custom', path='vision2/best.pt', force_reload=True) # path is to the model originally in runs/expX/weights/
         
@@ -31,7 +34,10 @@ class Robot:
         action = np.random.randn(7) * 0.1
         return action
 
+
 def make_env(has_renderer=True):
+    # Helper function 
+
     return suite.make(
         env_name="Lift",
         robots="Kinova3",
