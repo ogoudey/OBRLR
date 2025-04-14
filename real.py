@@ -80,6 +80,12 @@ def move_vector(base, vector):
 
 
 def rl():
+    for iteration in range(0, num_iterations):
+        for action_step in range(0, action_steps):
+            # replay memory adding
+            pass
+        for gradient_step in range(0, gradient_steps):
+            
     # robosuite training
     # => poliicy, parameters
     # attempt irl
