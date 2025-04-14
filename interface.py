@@ -1,7 +1,7 @@
 import numpy as np
 import robosuite as suite
 from robosuite.utils import transform_utils
-import camera_utils as cu
+from vision import camera_utils as cu
 import torch
 from PIL import Image
 
