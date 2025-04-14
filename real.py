@@ -4,7 +4,11 @@ from kortex_api.autogen.client_stubs.DeviceConfigClientRpc import DeviceConfigCl
 
 from kortex_api.autogen.messages import Session_pb2, Base_pb2, Common_pb2
 
-
+import sys
+import os
+import threading
+import time
+import json
 
 def move_to_start_position(base):
     # Make sure the arm is in Single Level Servoing mode
@@ -34,6 +38,7 @@ def move_to_start_position(base):
     base.PlayJointTrajectory(constrained_joint_angles)
 
     print("Waiting for movement to finish ...")
+    TIMEOUT_DURATION = 20
     finished = e.wait(TIMEOUT_DURATION)
     base.Unsubscribe(notification_handle)
 
@@ -42,6 +47,21 @@ def move_to_start_position(base):
     else:
         print("Timeout on action notification wait")
     return finished
+
+def check_for_end_or_abort(e):
+    """Return a closure checking for END or ABORT notifications
+
+    Arguments:
+    e -- event to signal when the action is completed
+        (will be set when an END or ABORT occurs)
+    """
+    def check(notification, e = e):
+        print("EVENT : " + \
+              Base_pb2.ActionEvent.Name(notification.action_event))
+        if notification.action_event == Base_pb2.ACTION_END \
+        or notification.action_event == Base_pb2.ACTION_ABORT:
+            e.set()
+    return check
 
 def move_vector(base, vector):
     joint_speeds = Base_pb2.JointSpeeds()
@@ -55,15 +75,18 @@ def move_vector(base, vector):
         i = i + 1
     print ("Sending the joint speeds for", period, "seconds...")
     base.SendJointSpeedsCommand(joint_speeds)
-    time.sleep(period)
+    
 
-def rl()
+
+
+def rl():
     # robosuite training
     # => poliicy, parameters
     # attempt irl
-
-def main()
-    # based on example 04-send_joint_speeds
+    pass
+    
+def main():
+    # Based on example 102.../04-send_joint_speeds
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
     import utilities
 
@@ -77,10 +100,22 @@ def main()
         move_to_start_position(base)
         
         # ... somehow...
-        move_vector([20, 10, 0, -10, -20, 0, 0])
+        #move_vector(base, [20, 10, 0, -10, -20, 0, 0])
         
-        rl()
-        
+        #rl()
 
+def io():
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    import utilities
+    args = utilities.parseConnectionArguments() 
+    with utilities.DeviceConnection.createTcpConnection(args) as router:
+        base = BaseClient(router)
+        while(True):
+            action = json.loads(input("Action"))
+            move_vector(base, action)
+            time.sleep(1)
+            base.Stop()
+    
 if __name__ == "__main__":
+    #io()
     main()
