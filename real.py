@@ -63,6 +63,7 @@ def check_for_end_or_abort(e):
             e.set()
     return check
 
+
 def move_vector(base, vector):
     joint_speeds = Base_pb2.JointSpeeds()
     period = 1
@@ -79,17 +80,6 @@ def move_vector(base, vector):
 
 
 
-def rl():
-    for iteration in range(0, num_iterations):
-        for action_step in range(0, action_steps):
-            # replay memory adding
-            pass
-        for gradient_step in range(0, gradient_steps):
-            
-    # robosuite training
-    # => poliicy, parameters
-    # attempt irl
-    pass
     
 def main():
     # Based on example 102.../04-send_joint_speeds
@@ -103,21 +93,18 @@ def main():
         print("Movement test")
         # Create required services
         base = BaseClient(router)
+        
         move_to_start_position(base)
-        
-        # ... somehow...
-        #move_vector(base, [20, 10, 0, -10, -20, 0, 0])
-        
-        #rl()
 
 def io():
+    # To test individual joint movements
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
     import utilities
     args = utilities.parseConnectionArguments() 
     with utilities.DeviceConnection.createTcpConnection(args) as router:
         base = BaseClient(router)
         while(True):
-            action = json.loads(input("Action"))
+            action = json.loads(input("Action (array of len 7) will go for 1 second: "))
             move_vector(base, action)
             time.sleep(1)
             base.Stop()
