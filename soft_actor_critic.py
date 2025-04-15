@@ -6,7 +6,9 @@ import torch.optim as optim
 
 import torchviz
 from tqdm import tqdm
+import tempfile
 
+import os
 import random
 
 class ReplayBuffer:
@@ -122,8 +124,8 @@ def train(sim, params):
 
     num_iterations, num_action_episodes, len_episode = params['num_iterations'], params['num_action_episodes'], params['len_episode']
     gamma, alpha = params['gamma'], params['alpha']
-    for iteration in tqdm(range(0, num_iterations)):
-        for action_episode in range(0, num_action_episodes):
+    for iteration in tqdm(range(0, num_iterations), position=0):
+        for action_episode in tqdm(range(0, num_action_episodes), position=1, leave=False):
             e = Episode()
             for episode in range(0, len_episode):
                 action = policy.sample(state)[0].detach().numpy()
@@ -136,7 +138,7 @@ def train(sim, params):
             rb.append(e)
         
         gradient_steps = params['num_gradient_steps']
-        for gradient_step in range(0, gradient_steps):
+        for gradient_step in tqdm(range(0, gradient_steps), position=1, leave=False):
             batch = rb.sample_batch(2)
             states = batch['states']
             actions = batch['actions']
@@ -172,8 +174,9 @@ def train(sim, params):
             
             print("Policy Loss:", policy_loss.item(), "Q Loss:", q_loss.item(), "Step:", gradient_step)
             
-            global trained_policy
-            trained_policy = policy
+    global trained_policy
+    trained_policy = policy
+    safe_save_model(trained_policy, "trained_policy.pt", save_state_dict=True)
     
 def test(sim):
     sim.has_renderer = True
@@ -196,6 +199,35 @@ def test_single_SAR(sim):
     state = torch.tensor(state)
     
     action, log_prob = policy.sample(state)
+    
+
+def safe_save_model(model, filename, save_state_dict=True):
+    """
+    Safely save a PyTorch model or its state_dict to a file using an atomic write.
+    
+    Parameters:
+        model (torch.nn.Module): The model to save.
+        filename (str): The target filename where the model will be saved.
+        save_state_dict (bool): If True, only the model's state_dict will be saved.
+                                Otherwise, the entire model is saved.
+    """
+    # Choose the data to save
+    data_to_save = model.state_dict() if save_state_dict else model
+
+    # Get the target directory from filename
+    target_dir = os.path.dirname(os.path.abspath(filename))
+    
+    # Ensure the target directory exists
+    os.makedirs(target_dir, exist_ok=True)
+
+    # Use a temporary file in the same directory for atomic write.
+    with tempfile.NamedTemporaryFile(dir=target_dir, delete=False) as tmp_file:
+        temp_filename = tmp_file.name
+        torch.save(data_to_save, tmp_file)
+    
+    # Atomically replace the target file with the temporary file.
+    os.replace(temp_filename, filename)
+    print(f"Model successfully saved to {filename}")    
     
 
   

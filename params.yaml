@@ -1,9 +1,9 @@
 other_parameters:
     
 training_parameters:
-    num_iterations: 2
-    num_action_episodes: 2
-    len_episode: 100
+    num_iterations: 10000
+    num_action_episodes: 100
+    len_episode: 50
     gamma: 0.99
     alpha: 0.2
-    num_gradient_steps: 2
+    num_gradient_steps: 50
