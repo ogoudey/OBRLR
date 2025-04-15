@@ -108,7 +108,9 @@ class PolicyNetwork(nn.Module):
 
 trained_policy = None
 
-def train(sim):
+def train(sim, params):
+    print(params)
+    
     policy = PolicyNetwork()
     qnetwork = QNetwork()
     rb = ReplayBuffer()
@@ -117,9 +119,9 @@ def train(sim):
     q_optimizer = optim.Adam(qnetwork.parameters(), lr=3e-4)
     
     state = sim.observe()
-    
-    num_iterations, num_action_episodes, len_episode = 2, 2, 100
-    gamma, alpha = 0.99, 0.2
+
+    num_iterations, num_action_episodes, len_episode = params['num_iterations'], params['num_action_episodes'], params['len_episode']
+    gamma, alpha = params['gamma'], params['alpha']
     for iteration in tqdm(range(0, num_iterations)):
         for action_episode in range(0, num_action_episodes):
             e = Episode()
@@ -133,7 +135,7 @@ def train(sim):
             sim.reset()
             rb.append(e)
         
-        gradient_steps = 2
+        gradient_steps = params['num_gradient_steps']
         for gradient_step in range(0, gradient_steps):
             batch = rb.sample_batch(2)
             states = batch['states']
