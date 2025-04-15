@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 import torchviz
+from tqdm import tqdm
 
 import random
 
@@ -119,7 +120,7 @@ def train(sim):
     
     num_iterations, num_action_episodes, len_episode = 2, 2, 100
     gamma, alpha = 0.99, 0.2
-    for iteration in range(0, num_iterations):
+    for iteration in tqdm(range(0, num_iterations)):
         for action_episode in range(0, num_action_episodes):
             e = Episode()
             for episode in range(0, len_episode):
