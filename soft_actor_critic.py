@@ -12,6 +12,8 @@ import os
 import random
 import time
 
+import pickle
+
 class ReplayBuffer:
     def __init__(self):
         self.episodes = []
@@ -40,6 +42,17 @@ class ReplayBuffer:
     def forget(self, forget_size):
         for i in range(0, forget_size):
             self.episodes.remove(self.episodes[0])
+            
+    def save(self):
+        with open("replays/replays.tmp", "wb") as f:
+            pickle.dump(self, f)
+            
+def load_replay_buffer(filepath):
+    with open(filepath, "rb") as f:
+        replay_buffer = pickle.load(f)
+    return replay_buffer
+            
+        
         
 class Episode:
     def __init__(self):
@@ -116,14 +129,17 @@ class PolicyNetwork(nn.Module):
 
 trained_policy = None
 
-def train(sim, params):
+def train(sim, params, replay_buffer_path=None):
     _policy_losses_over_time = []
     _q_losses_over_time = []
     left_margin = 0
     
     policy = PolicyNetwork()
     qnetwork = QNetwork()
-    rb = ReplayBuffer()
+    if not replay_buffer_path:
+        rb = ReplayBuffer()
+    else:
+        rb = load_replay_buffer(replay_buffer_path)
     
     policy_optimizer = optim.Adam(policy.parameters(), params['policy_lr'])
     q_optimizer = optim.Adam(qnetwork.parameters(), params['q_lr'])
@@ -211,7 +227,8 @@ def collect_data(sim, policy, rb, num_action_episodes, len_episode):
             e.append(state, action, reward, next_state)
             state = next_state
         sim.reset()
-        rb.append(e)    
+        rb.append(e)
+    rb.save()   
 
  
 def test(sim):

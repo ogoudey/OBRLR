@@ -14,6 +14,7 @@ if __name__ == "__main__":
     
     parser.add_argument('--params', type=str, required=False, help="Parameters file")
     parser.add_argument('--model', type=str, required=False, help="Pre-trained model")
+    parser.add_argument('--rb', type=str, required=False, help="Existing replay buffer")
     parser.add_argument('--real', action='store_true')
     args = parser.parse_args()
     
@@ -43,7 +44,10 @@ if __name__ == "__main__":
         
         sac.test(sim)
         
-    else: 
-        sac.train(sim, params["training_parameters"])
+    else:
+        if args.rb:
+            sac.train(sim, params["training_parameters"], rb)
+        else:
+            sac.train(sim, params["training_parameters"])
 
         sac.test(sim)       
