@@ -6,6 +6,7 @@ from vision import sim_vision
 import torch
 from PIL import Image
 
+import matplotlib.pyplot as plt
 import time
 import random
 from collections import defaultdict
@@ -65,6 +66,7 @@ class Sim:
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
         self.mem_reward = torch.tensor(self.raise_reward(obs['cube_pos']), dtype=torch.float32)
         self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim)
+
         
         # FOR CUBE Z        
         self.initial_cube_z = obs['cube_pos'][2]
@@ -92,15 +94,16 @@ class Sim:
         self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim)
         
         
+        
     def reward(self):
         return self.mem_reward
         
     def raise_reward(self, cube_pos):
-        diff = (cube_pos[2] - self.initial_cube_z) * 10
+        diff = (cube_pos[2] - self.initial_cube_z)
         if diff > 0:
-            return diff
+            return 1
         else:
-            return 0
+            return -0.1
             
     
     # SLOPPY REWARD FUNCTION

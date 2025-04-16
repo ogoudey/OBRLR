@@ -3,10 +3,10 @@ other_parameters:
 training_parameters:
     policy_lr: 0.0003
     q_lr: 0.0003
-    num_iterations: 100
-    num_action_episodes: 10
-    batch_size: 64
+    num_iterations: 1
+    num_action_episodes: 2
     len_episode: 20
     gamma: 0.99
     alpha: 0.2
-    num_gradient_steps: 20
+    num_gradient_steps: 10
+
