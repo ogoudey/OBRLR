@@ -37,6 +37,10 @@ class ReplayBuffer:
         }
         return batch
 
+    def forget(self, forget_size):
+        for i in range(0, forget_size):
+            self.episodes.remove(self.episodes[0])
+        
 class Episode:
     def __init__(self):
         self.steps = []
@@ -53,7 +57,7 @@ class Step:
         self.next_state = next_state
 
 class QNetwork(nn.Module):
-    def __init__(self, state_action_dim=13, q_value_dim=1, hidden_dim=256):
+    def __init__(self, state_action_dim=16, q_value_dim=1, hidden_dim=256):
         super(QNetwork, self).__init__()
         self.fc1 = nn.Linear(state_action_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
@@ -74,7 +78,7 @@ class QNetwork(nn.Module):
         return q_value
 
 class PolicyNetwork(nn.Module):
-    def __init__(self, state_dim=6, action_dim=7, hidden_dim=256):
+    def __init__(self, state_dim=9, action_dim=7, hidden_dim=256):
         super(PolicyNetwork, self).__init__()
         self.fc1 = nn.Linear(state_dim, hidden_dim)
         self.fc2 = nn.Linear(hidden_dim, hidden_dim)
@@ -128,24 +132,14 @@ def train(sim, params):
     num_iterations, num_action_episodes, len_episode = params['num_iterations'], params['num_action_episodes'], params['len_episode']
     gamma, alpha = params['gamma'], params['alpha']
     
-    state = sim.observe()
+    
     while True:
         for iteration in tqdm(range(0, num_iterations), position=0):
-            for action_episode in tqdm(range(0, num_action_episodes), position=1, leave=False):
-                e = Episode()
-                for episode in range(0, len_episode):
-                    action = policy.sample(state)[0].detach().numpy()
-                    sim.act(action)
-
-                    time.sleep(1)
-                    reward = sim.reward()
-                    next_state = sim.observe()
-                    e.append(state, action, reward, next_state)
-                    state = next_state
-                sim.reset()
-                rb.append(e)
+            
+            collect_data(sim, policy, rb, num_action_episodes, len_episode)
             
             gradient_steps = params['num_gradient_steps']
+            state = sim.observe()
             for gradient_step in tqdm(range(0, gradient_steps), position=1, leave=False):
                 batch = rb.sample_batch(128)
                 states = batch['states']
@@ -202,7 +196,24 @@ def train(sim, params):
     global trained_policy
     trained_policy = policy
     safe_save_model(trained_policy, "trained_policy.pt", save_state_dict=True)
-    
+   
+def collect_data(sim, policy, rb, num_action_episodes, len_episode):
+    for action_episode in tqdm(range(0, num_action_episodes), position=1, leave=False):
+        e = Episode()
+        state = sim.observe()
+        for episode in range(0, len_episode):
+            action = policy.sample(state)[0].detach().numpy()
+            sim.act(action)
+
+            time.sleep(1)
+            reward = sim.reward()
+            next_state = sim.observe()
+            e.append(state, action, reward, next_state)
+            state = next_state
+        sim.reset()
+        rb.append(e)    
+
+ 
 def test(sim):
     import time
     sim.has_renderer = True
@@ -263,7 +274,3 @@ def safe_save_model(model, filename, save_state_dict=True):
     # Atomically replace the target file with the temporary file.
     os.replace(temp_filename, filename)
     print(f"Model successfully saved to {filename}")    
-    
-
-  
-

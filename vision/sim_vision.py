@@ -8,8 +8,8 @@ from collections import defaultdict
 class SimVision:
     def __init__(self):
         self.vision_model = torch.hub.load('ultralytics/yolov5', 'custom', path='vision/best.pt', force_reload=True) # path is to the model originally in runs/expX/weights/
-        self.cube_position = [0.0, 0.0, 0.0]
-        self.eef_position = [1.0, 1.0, 1.0]
+        self.cube_position = np.array([0.0, 0.0, 0.0])
+        self.eef_position = np.array([1.0, 1.0, 1.0])
         
     def detect(self, env_image, env_depth, sim, no_cap=True):
 
@@ -23,7 +23,9 @@ class SimVision:
         
         centers = self.box_centers(result)
         _3d_positions = self.positions_from_labelled_pixels(centers, env_depth, sim)
-        return torch.tensor(_3d_positions)
+        euler_distance = self.cube_position - self.eef_position
+        np_array = np.concatenate((_3d_positions, euler_distance))
+        return torch.tensor(np_array, dtype=torch.float32)
 
     def box_centers(self, result):
         centers = dict()
