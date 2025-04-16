@@ -4,8 +4,8 @@ training_parameters:
     policy_lr: 0.0003
     q_lr: 0.0003
     num_iterations: 1
-    num_action_episodes: 50
+    num_action_episodes: 2
     len_episode: 20
     gamma: 0.99
     alpha: 0.2
-    num_gradient_steps: 50
+    num_gradient_steps: 10

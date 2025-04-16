@@ -46,7 +46,7 @@ if __name__ == "__main__":
         
     else:
         if args.rb:
-            sac.train(sim, params["training_parameters"], rb)
+            sac.train(sim, params["training_parameters"], args.rb)
         else:
             sac.train(sim, params["training_parameters"])
 

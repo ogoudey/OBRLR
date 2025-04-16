@@ -46,10 +46,12 @@ class ReplayBuffer:
     def save(self, name):
         with open("replays/" + name + ".tmp", "wb") as f:
             pickle.dump(self, f)
+        print("Replay buffer saved to replays/" + name + ".tmp")
             
 def load_replay_buffer(filepath):
     with open(filepath, "rb") as f:
         replay_buffer = pickle.load(f)
+    print("Replay buffer loaded!")
     return replay_buffer
             
         
@@ -229,7 +231,7 @@ def collect_data(sim, policy, rb, num_action_episodes, len_episode):
         sim.reset()
         rb.append(e)
     save_name = "1raise_1e-1else"
-    rb.save()   
+    rb.save(save_name)   
 
  
 def test(sim):
