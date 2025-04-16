@@ -43,8 +43,8 @@ class ReplayBuffer:
         for i in range(0, forget_size):
             self.episodes.remove(self.episodes[0])
             
-    def save(self):
-        with open("replays/replays.tmp", "wb") as f:
+    def save(self, name):
+        with open("replays/" + name + ".tmp", "wb") as f:
             pickle.dump(self, f)
             
 def load_replay_buffer(filepath):
@@ -228,6 +228,7 @@ def collect_data(sim, policy, rb, num_action_episodes, len_episode):
             state = next_state
         sim.reset()
         rb.append(e)
+    save_name = "1raise_1e-1else"
     rb.save()   
 
  

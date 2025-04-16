@@ -99,11 +99,11 @@ class Sim:
         return self.mem_reward
         
     def raise_reward(self, cube_pos):
-        diff = (cube_pos[2] - self.initial_cube_z) * 10
+        diff = (cube_pos[2] - self.initial_cube_z)
         if diff > 0:
-            return diff
+            return 1
         else:
-            return 0
+            return -0.1
             
     
     # SLOPPY REWARD FUNCTION
