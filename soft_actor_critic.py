@@ -113,7 +113,9 @@ class PolicyNetwork(nn.Module):
 trained_policy = None
 
 def train(sim, params):
-    print(params)
+    _policy_losses_over_time = []
+    _q_losses_over_time = []
+    left_margin = 0
     
     policy = PolicyNetwork()
     qnetwork = QNetwork()
@@ -181,8 +183,16 @@ def train(sim, params):
                 policy_optimizer.step()
                 q_optimizer.step()
             #
+            _q_losses_over_time.append(q_loss.detach().numpy())
+            _policy_losses_over_time.append(policy_loss.detach().numpy())
             # Per iteration plotting
-            #  
+            #
+        plt.plot(range(0, num_iterations + left_margin), _policy_losses_over_time, label="Policy")
+        plt.plot(range(0, num_iterations + left_margin), _q_losses_over_time, label="Q-Network")
+        plt.legend()
+        plt.title("lr policy " + str(params['policy_lr']) + ", lr q " + str(params['q_lr']) + " alpha " + str(params['alpha']))
+        plt.show()
+        
         inp = input("#/n: ")
         if inp == "n":
             break
