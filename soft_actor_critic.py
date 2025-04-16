@@ -10,6 +10,7 @@ import tempfile
 
 import os
 import random
+import time
 
 class ReplayBuffer:
     def __init__(self):
@@ -92,13 +93,14 @@ class PolicyNetwork(nn.Module):
         log_std = self.log_std_layer(x)
         log_std = torch.clamp(log_std, min=-20, max=2)
         std = torch.exp(log_std)
-
         return mean, std
 
     def sample(self, state):
         mean, std = self.forward(state)
+        
         normal = torch.distributions.Normal(mean, std)
         action = normal.rsample()
+        #print("Mean:", mean, "Std:", std, "Action:", action)
         log_prob = normal.log_prob(action).sum(dim=-1, keepdim=True)
         return action, log_prob
 
@@ -117,77 +119,95 @@ def train(sim, params):
     qnetwork = QNetwork()
     rb = ReplayBuffer()
     
-    policy_optimizer = optim.Adam(policy.parameters(), lr=3e-4)
-    q_optimizer = optim.Adam(qnetwork.parameters(), lr=3e-4)
+    policy_optimizer = optim.Adam(policy.parameters(), params['policy_lr'])
+    q_optimizer = optim.Adam(qnetwork.parameters(), params['q_lr'])
     
-    state = sim.observe()
-
+    
     num_iterations, num_action_episodes, len_episode = params['num_iterations'], params['num_action_episodes'], params['len_episode']
     gamma, alpha = params['gamma'], params['alpha']
-    for iteration in tqdm(range(0, num_iterations), position=0):
-        for action_episode in tqdm(range(0, num_action_episodes), position=1, leave=False):
-            e = Episode()
-            for episode in range(0, len_episode):
-                action = policy.sample(state)[0].detach().numpy()
-                sim.act(action)
-                reward = sim.reward
-                next_state = sim.state
-                e.append(state, action, reward, next_state)
-                state = next_state
-            sim.reset()
-            rb.append(e)
-        
-        gradient_steps = params['num_gradient_steps']
-        for gradient_step in tqdm(range(0, gradient_steps), position=1, leave=False):
-            batch = rb.sample_batch(2)
-            states = batch['states']
-            actions = batch['actions']
-            rewards = batch['rewards']
-            next_states = batch['next_states']
-            # Critic update #
-            state_actions = torch.cat((states, actions), dim=-1)
-            q_current = qnetwork(state_actions)
+    
+    state = sim.observe()
+    while True:
+        for iteration in tqdm(range(0, num_iterations), position=0):
+            for action_episode in tqdm(range(0, num_action_episodes), position=1, leave=False):
+                e = Episode()
+                for episode in range(0, len_episode):
+                    action = policy.sample(state)[0].detach().numpy()
+                    sim.act(action)
+
+                    time.sleep(1)
+                    reward = sim.reward()
+                    next_state = sim.observe()
+                    e.append(state, action, reward, next_state)
+                    state = next_state
+                sim.reset()
+                rb.append(e)
             
-            with torch.no_grad():
-                next_actions, next_log_probs = policy.sample(next_states)
-                next_state_actions = torch.cat((next_states, next_actions), dim=-1)
-                q_next = qnetwork(next_state_actions)
-                target_q = rewards + gamma * (q_next - alpha * next_log_probs)
+            gradient_steps = params['num_gradient_steps']
+            for gradient_step in tqdm(range(0, gradient_steps), position=1, leave=False):
+                batch = rb.sample_batch(128)
+                states = batch['states']
+                actions = batch['actions']
+                rewards = batch['rewards']
+                next_states = batch['next_states']
+                # Critic update #
+                state_actions = torch.cat((states, actions), dim=-1)
+                q_current = qnetwork(state_actions)
                 
-            q_loss = F.mse_loss(q_current, target_q)
-            
-            # Actor update #
-            new_actions, log_probs = policy.sample(states)  
-            new_state_actions = torch.cat((states, new_actions), dim=-1)
-            q_val_new = qnetwork(new_state_actions)
-            policy_loss = (alpha * log_probs - q_val_new).mean()
-            
-            # Backpropogation #
-            policy_optimizer.zero_grad()
-            q_optimizer.zero_grad()    
-            
-            policy_loss.backward(retain_graph=True)  # retain_graph to use the graph further
-            q_loss.backward()  
-            
-            policy_optimizer.step()
-            q_optimizer.step()  
-            
-            print("Policy Loss:", policy_loss.item(), "Q Loss:", q_loss.item(), "Step:", gradient_step)
-            
+                with torch.no_grad():
+                    next_actions, next_log_probs = policy.sample(next_states)
+                    next_state_actions = torch.cat((next_states, next_actions), dim=-1)
+                    q_next = qnetwork(next_state_actions)
+                    target_q = rewards + gamma * (q_next - alpha * next_log_probs)
+                    
+                q_loss = F.mse_loss(q_current, target_q)
+                
+                # Actor update #
+                new_actions, log_probs = policy.sample(states)  
+                new_state_actions = torch.cat((states, new_actions), dim=-1)
+                q_val_new = qnetwork(new_state_actions)
+                policy_loss = (alpha * log_probs - q_val_new).mean()
+                
+                # Backpropogation #
+                policy_optimizer.zero_grad()
+                q_optimizer.zero_grad()    
+                
+                policy_loss.backward(retain_graph=True)  # retain_graph to use the graph further
+                q_loss.backward()  
+                
+                torch.nn.utils.clip_grad_norm_(policy.parameters(), max_norm=1.0)
+                torch.nn.utils.clip_grad_norm_(qnetwork.parameters(), max_norm=1.0)
+                
+                policy_optimizer.step()
+                q_optimizer.step()
+            #
+            # Per iteration plotting
+            #  
+        inp = input("#/n: ")
+        if inp == "n":
+            break
+        else:
+            left_margin += num_iterations
+            num_iterations = int(inp)             
     global trained_policy
     trained_policy = policy
     safe_save_model(trained_policy, "trained_policy.pt", save_state_dict=True)
     
 def test(sim):
+    import time
     sim.has_renderer = True
     sim.reset()
     global trained_policy
     state = sim.observe()
     num_steps = 100
     for step in range(0, num_steps):
-        action = trained_policy.sample(state)[0].detach().numpy()          
+        print(state)
+        action = trained_policy.sample(state)[0].detach().numpy()
+        print(action)        
         sim.act(action) 
         state = sim.observe()
+        print(sim.reward())
+        time.sleep(1)
               
        
 def test_single_SAR(sim):
@@ -199,7 +219,12 @@ def test_single_SAR(sim):
     state = torch.tensor(state)
     
     action, log_prob = policy.sample(state)
-    
+
+def load_saved_model(model_path):
+    global trained_policy
+    trained_policy = PolicyNetwork()
+    trained_policy.load_state_dict(torch.load(model_path))
+    trained_policy.eval()  
 
 def safe_save_model(model, filename, save_state_dict=True):
     """

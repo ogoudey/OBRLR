@@ -1,7 +1,8 @@
 import numpy as np
 import robosuite as suite
 from robosuite.utils import transform_utils
-from vision import camera_utils as cu
+#from vision import camera_utils as cu
+from vision import sim_vision
 import torch
 from PIL import Image
 
@@ -10,6 +11,7 @@ import random
 from collections import defaultdict
 from itertools import product
 import tqdm
+import json
 
 import matplotlib.pyplot as plt
 import networkx as nx
@@ -17,15 +19,26 @@ import torch
 import cv2
 import os
 
+
 class Sim:
     def __init__(self):
-        self.env, self.reward, self.state = None, None, None
+        self.env, self.mem_reward, self.state = None, None, None
         # Initialize (reset)
         self.has_renderer = False
+        
+        # Vision
+        self.sim_vision = sim_vision.SimVision()
+        
+        #
+        
+        # FOR RAISE REWARD #
+        self.initial_cube_z = 0
+        #
         
         #FOR SLOPPY REWARDS
         self.num_grades = 10
         self.grades = dict()
+        self.initial_distance = 0
         # END FOR SLOPPY REWARDS
         
         self.reset()
@@ -50,8 +63,11 @@ class Sim:
         
         # Initialize
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
-        self.reward = torch.tensor(self.__reward(obs['robot0_eef_pos'], obs['cube_pos']), dtype=torch.float32)
-        self.state = torch.tensor(np.concatenate((obs['robot0_eef_pos'], obs['cube_pos'])), dtype=torch.float32) # YOLO
+        self.mem_reward = torch.tensor(self.raise_reward(obs['cube_pos']), dtype=torch.float32)
+        self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim)
+        
+        # FOR CUBE Z        
+        self.initial_cube_z = obs['cube_pos'][2]
         
         # FOR SLOPPY REWARDS
         self.initial_distance = np.linalg.norm(obs['robot0_eef_pos'] - obs['cube_pos'])
@@ -60,21 +76,35 @@ class Sim:
         
     def observe(self):
         state = self.state
-        return state
+        normalized_state = state # i.e. not normalized
+        return normalized_state
 
     def act(self, action):
         obs, _, _, _ = self.env.step(action)
-        reward = torch.tensor(self.__reward(obs['robot0_eef_pos'], obs['cube_pos']), dtype=torch.float32)
-        self.reward = torch.tensor([reward]) # ENGINEER
-        
+        self.mem_reward = torch.tensor(self.raise_reward(obs['cube_pos']), dtype=torch.float32)
+
+        """
         # below should be replaced by YOLO
         state = torch.tensor(np.concatenate((obs['robot0_eef_pos'], obs['cube_pos'])), dtype=torch.float32)
         self.state = state
+        """
+
+        self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim)
         
-    # SLOPPY REWARD FUNCTION
-    def __reward(self, eef_pos, cube_pos):
         
+    def reward(self):
+        return self.mem_reward
+        
+    def raise_reward(self, cube_pos):
+        diff = (cube_pos[2] - self.initial_cube_z) * 10
+        if diff > 0:
+            return diff
+        else:
+            return 0
+            
     
+    # SLOPPY REWARD FUNCTION
+    def make_reward(self, eef_pos, cube_pos):
         distance = np.linalg.norm(eef_pos - cube_pos)
 
         for grade in self.grades.keys():
@@ -83,3 +113,16 @@ class Sim:
                 #prnt("Passed", self.initial_distance / len(grades.keys()) * grade, "with", distance, "Reward:", len(grades.keys()) - grade)
                 return (len(self.grades.keys()) - grade) * 1
         return -1
+
+if __name__ == "__main__":
+    s = Sim()
+    s.has_renderer = True
+    s.reset()
+    while True:
+        action = np.array(json.loads(input("Action: ")))
+        obs, _, _, _ = s.env.step(action)
+        reward = torch.tensor(s.raise_reward(obs['cube_pos']), dtype=torch.float32)
+        print(torch.tensor([reward]))
+        state = torch.tensor(np.concatenate((obs['robot0_eef_pos'], obs['cube_pos'])), dtype=torch.float32)
+        print(state)
+    
