@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
 import torch.optim as optim
 
@@ -147,7 +148,7 @@ def train(sim, params):
             
             gradient_steps = params['num_gradient_steps']
             for gradient_step in tqdm(range(0, gradient_steps), position=1, leave=False):
-                batch = rb.sample_batch(128)
+                batch = rb.sample_batch(params['batch_size'])
                 states = batch['states']
                 actions = batch['actions']
                 rewards = batch['rewards']
