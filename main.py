@@ -30,7 +30,7 @@ if __name__ == "__main__":
             params = yaml.safe_load(f)
     
     if args.real:
-        import real # irl robot stuff
+        from real import real # irl robot stuff
         # unused in current algorithm
 
     import interface
