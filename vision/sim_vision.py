@@ -1,5 +1,6 @@
 from vision import camera_utils as cu
 
+import cv2
 import numpy as np
 import torch
 from PIL import Image
@@ -8,8 +9,8 @@ from collections import defaultdict
 class SimVision:
     def __init__(self):
         self.vision_model = torch.hub.load('ultralytics/yolov5', 'custom', path='vision/best.pt', force_reload=True) # path is to the model originally in runs/expX/weights/
-        self.cube_position = np.array([0.0, 0.0, 0.0])
-        self.eef_position = np.array([1.0, 1.0, 1.0])
+        self.cube_position = [0.0, 0.0, 0.0]
+        self.eef_position = [1.0, 1.0, 1.0]
         
     def detect(self, env_image, env_depth, sim, no_cap=True):
 
@@ -25,6 +26,7 @@ class SimVision:
         _3d_positions = self.positions_from_labelled_pixels(centers, env_depth, sim)
         euler_distance = self.cube_position - self.eef_position
         np_array = np.concatenate((_3d_positions, euler_distance))
+        print("Detection:", np_array)
         return torch.tensor(np_array, dtype=torch.float32)
 
     def box_centers(self, result):
@@ -54,12 +56,17 @@ class SimVision:
             points_eef = cu.transform_from_pixels_to_world(np.array([labelled_pixel_dict["eef"]]), expanded_depth, camera_to_world_transform)
             positions_array.extend(points_eef[0])
             self.eef_position = points_eef[0]
+            print("Position eef:", self.eef_position)
         else:
             positions_array.extend(self.eef_position)
+            print("No eef:", self.eef_position)
         if "cube" in labelled_pixel_dict.keys():    
             points_cube = cu.transform_from_pixels_to_world(np.array([labelled_pixel_dict["cube"]]), expanded_depth, camera_to_world_transform)
+            
             positions_array.extend(points_cube[0])
             self.cube_position = points_cube[0]
+            print("Setting cube:", self.cube_position)
         else:
+            print("No cube:", self.cube_position)
             positions_array.extend(self.cube_position)
-        return torch.tensor(positions_array, dtype=torch.float32)     
+        return np.array(positions_array)

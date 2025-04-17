@@ -12,7 +12,7 @@ import tempfile
 import os
 import random
 import time
-
+import numpy as np
 import pickle
 
 class ReplayBuffer:
@@ -23,7 +23,7 @@ class ReplayBuffer:
         self.episodes.append(episode)
         
     def sample_batch(self, batch_size):
-        # First, flatten all episodes into a list of steps
+        # Flatten all episodes into a list of steps
         all_steps = []
         for episode in self.episodes:
             all_steps.extend(episode.steps)
@@ -52,7 +52,7 @@ class ReplayBuffer:
 def load_replay_buffer(filepath):
     with open(filepath, "rb") as f:
         replay_buffer = pickle.load(f)
-    print("Replay buffer loaded!")
+    print("Replay buffer of", len(replay_buffer.episodes), " episodes loaded!")
     return replay_buffer
             
         
@@ -117,7 +117,7 @@ class PolicyNetwork(nn.Module):
 
     def sample(self, state):
         mean, std = self.forward(state)
-        
+        print("Means:", mean, "\nSTD:", std)
         normal = torch.distributions.Normal(mean, std)
         action = normal.rsample()
         #print("Mean:", mean, "Std:", std, "Action:", action)
@@ -128,6 +128,7 @@ class PolicyNetwork(nn.Module):
 
 
 #       Control Scripts       #
+
 
 
 trained_policy = None
@@ -155,7 +156,9 @@ def train(sim, params, replay_buffer_path=None):
     while True:
         for iteration in tqdm(range(0, num_iterations), position=0):
             
-            collect_data(sim, policy, rb, num_action_episodes, len_episode)
+            collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode)
+            
+            #collect_teleop_data(sim, rb)
             
             gradient_steps = params['num_gradient_steps']
             state = sim.observe()
@@ -216,7 +219,7 @@ def train(sim, params, replay_buffer_path=None):
     trained_policy = policy
     safe_save_model(trained_policy, "trained_policy.pt", save_state_dict=True)
    
-def collect_data(sim, policy, rb, num_action_episodes, len_episode):
+def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode):
     for action_episode in tqdm(range(0, num_action_episodes), position=1, leave=False):
         e = Episode()
         state = sim.observe()
@@ -234,7 +237,51 @@ def collect_data(sim, policy, rb, num_action_episodes, len_episode):
     save_name = "1raise_1e-1else"
     rb.save(save_name)   
 
- 
+def collect_teleop_data(sim, rb):
+    sim.has_renderer = True
+    sim.reset()
+    e = Episode()
+    try:
+        speed = 1.0
+        state = sim.observe()
+        while True:
+            action = [0,0,0,0,0,0,0]
+            trigger = input("Button: ")
+            print(trigger)
+            if trigger == "q":
+                action[0] = speed
+            elif trigger == "w":
+                action[1] = speed
+            elif trigger == "e":
+                action[2] = speed
+            elif trigger == "r":
+                action[3] = speed
+            elif trigger == "t":
+                action[4] = speed
+            elif trigger == "y":
+                action[5] = speed
+            elif trigger == "u":
+                action[6] = speed
+            else:
+                
+                print("Assigning speed!")
+                try:
+                    speed = float(trigger)
+                except ValueError:
+                    print("OOPS!")
+                    continue
+                
+            sim.act(np.array(action))
+            reward = sim.reward()   
+            next_state = sim.observe()
+            e.append(state, action, reward, next_state)
+            print("\n", state, action, reward, next_state, "\n")         
+            state = sim.observe()
+        
+    except KeyboardInterrupt:
+        rb.append(e)
+        rb.save("combined1")
+
 def test(sim):
     import time
     sim.has_renderer = True

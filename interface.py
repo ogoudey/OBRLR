@@ -91,7 +91,7 @@ class Sim:
         self.state = state
         """
 
-        self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim)
+        self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim, no_cap=True)
         
         
         
@@ -116,6 +116,7 @@ class Sim:
                 #prnt("Passed", self.initial_distance / len(grades.keys()) * grade, "with", distance, "Reward:", len(grades.keys()) - grade)
                 return (len(self.grades.keys()) - grade) * 1
         return -1
+
 
 if __name__ == "__main__":
     s = Sim()
