@@ -29,7 +29,29 @@ Using teleop, hit <key>, <enter> like regular `input()`. Controls are:
     u:      gripper
     -1 through 1: sets the speed which all the other controlls use
 
-E.g. A sequence of inputs (0.2, u, u, u) closes the gripper with speed 0.2 three times. 
+E.g. A sequence of inputs (0.2, u, u, u) closes the gripper with speed 0.2 three times.
+
+### Seeing detections
+To inspect detections (a part of the state representation), change
+```
+self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim, no_cap=True)
+```
+to
+```
+self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim, no_cap=False)
+```
+This will help with teleop, and with assessing the accuracy of YOLO.
+
+### Inspecting ReplayBuffers
+```
+>>> import soft_actor_critic as sac
+>>> rb = sac.load_replay_buffer('replays/1raise_1e-1else.tmp')
+Replay buffer of 141  episodes loaded!
+>>> rb
+<soft_actor_critic.ReplayBuffer object at 0x7f4397cef770>
+```
+ReplayBuffers have Episode => Step => SARS
+Since a typical episode length is 50, a ReplayBuffer of size 100 has more like 5000 Steps for batch sampling.
 
 ## Install dependencies using `pip`
 1. Create python virtual environment
