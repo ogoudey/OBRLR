@@ -4,7 +4,7 @@
 ## Configurations
 Run `python3 main.py` for default configuration with parameters set to those in `params.yaml`. The training loop will continue for all `num_iterations` then ask if you want to do more iterations (give a number of iterations) or `n` (the 
 
-To use a specific parameters yaml, use `--params <path_of_yaml>`.
+To use a specific parameters yaml, use `--params <path_of_yaml>`. Right now there are three parameters files with minor differences. `parameters/data_collection` emphasizes policy-based data-collection, the kind you let run for while. `parameters/train_nn` emphasizes updating the neural networks.
 
 To load a replay buffer use `--rb <path_of_replay_buffer>`, something like `--rb replays/1raise_1e-1else.tmp`.
 
