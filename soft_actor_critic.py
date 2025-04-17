@@ -156,9 +156,8 @@ def train(sim, params, replay_buffer_path=None):
     while True:
         for iteration in tqdm(range(0, num_iterations), position=0):
             
-            collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode)
-            
-            #collect_teleop_data(sim, rb)
+            collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, params['rb_save_name'])
+            #collect_teleop_data(sim, rb, params['rb_save_name'])
             
             gradient_steps = params['num_gradient_steps']
             state = sim.observe()
@@ -217,9 +216,9 @@ def train(sim, params, replay_buffer_path=None):
             num_iterations = int(inp)             
     global trained_policy
     trained_policy = policy
-    safe_save_model(trained_policy, "trained_policy.pt", save_state_dict=True)
+    safe_save_model(trained_policy, params["saved_model_name"] +".pt", save_state_dict=True)
    
-def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode):
+def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, rb_save_name):
     for action_episode in tqdm(range(0, num_action_episodes), position=1, leave=False):
         e = Episode()
         state = sim.observe()
@@ -234,10 +233,10 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode):
             state = next_state
         sim.reset()
         rb.append(e)
-    save_name = "1raise_1e-1else"
+    save_name = rb_save_name
     rb.save(save_name)   
 
-def collect_teleop_data(sim, rb):
+def collect_teleop_data(sim, rb, rb_save_name):
     sim.has_renderer = True
     sim.reset()
     e = Episode()
@@ -280,7 +279,7 @@ def collect_teleop_data(sim, rb):
         
     except KeyboardInterrupt:
         rb.append(e)
-        rb.save("combined1")
+        rb.save(rb_save_name)
 
 def test(sim):
     import time
