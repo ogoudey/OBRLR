@@ -228,22 +228,29 @@ def train(sim, params, policy_path=None, qnetwork_path=None, replay_buffer_path=
         else:
             left_margin += num_iterations
             num_iterations = int(inp)             
-        
    
 def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, rb_save_name):
     for action_episode in tqdm(range(0, num_action_episodes), position=1, leave=False):
         e = Episode()
         state = sim.observe()
-        for episode in range(0, len_episode):
+        for step in range(0, len_episode):
             action = policy.sample(state)[0].detach().numpy()
             sim.act(action)
 
-            time.sleep(1)
+
             reward = sim.reward()
             next_state = sim.observe()
             e.append(state, action, reward, next_state)
             state = next_state
-        sim.reset()
+            if reward.item() == 1.0:
+                sim.reset()
+                rb.append(e)
+                rb.save(rb_save_name)
+                print("********** Automatically arrived at reward***********")
+                print(reward.item())
+                input("Proceed?")
+                break
+        sim.reset(has_renderer=True)
         rb.append(e)
     save_name = rb_save_name
     rb.save(save_name)   
@@ -307,6 +314,8 @@ def test(sim):
     global trained_policy
 
     num_steps = 100
+    successes = 0
+    trials = 0
     while True:
         sim.reset(True)
         state = sim.observe()
@@ -316,7 +325,14 @@ def test(sim):
             print("Action:", action)        
             sim.act(action) 
             state = sim.observe()
-            print("Reward", sim.reward())
+            reward = sim.reward()
+            print("\nReward", reward,"\n")
+            if reward.item() == 1.0:
+                time.sleep(2)
+                successes += 1
+                break
+        trials += 1
+        print("Success rate:", successes/trials)
               
        
 def test_single_SAR(sim):
@@ -330,17 +346,14 @@ def test_single_SAR(sim):
     action, log_prob = policy.sample(state)
 
 def load_saved_policy(policy_path):
-    global trained_policy
     trained_policy = PolicyNetwork()
     trained_policy.load_state_dict(torch.load(policy_path))
-    trained_policy.eval()
+
     return trained_policy
     
 def load_saved_qnetwork(qnetwork_path):
-    global trained_qnetwork
     trained_qnetwork = QNetwork()
     trained_qnetwork.load_state_dict(torch.load(qnetwork_path))
-    trained_qnetwork.eval() 
     return trained_qnetwork
 
 def safe_save_model(model, filename, save_state_dict=True):

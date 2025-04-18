@@ -98,8 +98,9 @@ class Sim:
         return self.mem_reward
         
     def raise_reward(self, cube_pos):
-        print("Reward calculation:", cube_pos[2], "-", self.initial_cube_z)
         diff = (cube_pos[2] - self.initial_cube_z)
+        print("Reward calculation:", cube_pos[2], "-", self.initial_cube_z, "=", diff)
+        
         if diff > .01:
             return 1
         else:
