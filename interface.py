@@ -47,26 +47,32 @@ class Sim:
         
         
           
-    def reset(self):
-        env = suite.make(
-            env_name="Lift",
-            robots="Kinova3",
-            has_renderer=self.has_renderer,
-            has_offscreen_renderer=True,
-            use_camera_obs=True,
-            horizon = 1000,
-            camera_heights=400,
-            camera_widths=400,
-            camera_names="sideview",
-            camera_depths=True,
-        )
-        self.env = env
+    def reset(self, has_renderer=False):
+        if not self.env:
+            self.env = suite.make(
+                env_name="Lift",
+                robots="Kinova3",
+                has_renderer=self.has_renderer,
+                has_offscreen_renderer=True,
+                use_camera_obs=True,
+                horizon = 1000,
+                camera_heights=400,
+                camera_widths=400,
+                camera_names="sideview",
+                camera_depths=True,
+            )
+        else:
+            self.env.has_renderer=has_renderer
+            self.has_renderer = has_renderer
+            self.env.reset()
+
         
         # Initialize
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
         self.mem_reward = torch.tensor(self.raise_reward(obs['cube_pos']), dtype=torch.float32)
         self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim)
-
+        
+        self.sim_vision.reset()
         
         # FOR CUBE Z        
         self.initial_cube_z = obs['cube_pos'][2]
@@ -84,7 +90,7 @@ class Sim:
     def act(self, action):
         obs, _, _, _ = self.env.step(action)
         self.mem_reward = torch.tensor(self.raise_reward(obs['cube_pos']), dtype=torch.float32)
-        self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim, no_cap=False)
+        self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim, no_cap= not self.has_renderer)
         
         
         
@@ -92,8 +98,9 @@ class Sim:
         return self.mem_reward
         
     def raise_reward(self, cube_pos):
+        print("Reward calculation:", cube_pos[2], "-", self.initial_cube_z)
         diff = (cube_pos[2] - self.initial_cube_z)
-        if diff > 0:
+        if diff > .01:
             return 1
         else:
             return -0.1

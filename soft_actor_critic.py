@@ -132,14 +132,20 @@ class PolicyNetwork(nn.Module):
 
 
 trained_policy = None
+trained_qnetwork = None
 
-def train(sim, params, replay_buffer_path=None):
+def train(sim, params, policy_path=None, qnetwork_path=None, replay_buffer_path=None):
     _policy_losses_over_time = []
     _q_losses_over_time = []
     left_margin = 0
-    
-    policy = PolicyNetwork()
-    qnetwork = QNetwork()
+    if not policy_path:
+        policy = PolicyNetwork()
+    else:
+        policy = load_saved_policy(policy_path)
+    if not qnetwork_path:
+        qnetwork = QNetwork()
+    else:
+        qnetwork = load_saved_qnetwork(qnetwork_path)
     if not replay_buffer_path:
         rb = ReplayBuffer()
     else:
@@ -155,12 +161,14 @@ def train(sim, params, replay_buffer_path=None):
     
     while True:
         for iteration in tqdm(range(0, num_iterations), position=0):
-  
-            collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, params['saved_rb_name'])
-            #collect_teleop_data(sim, rb, params['rb_save_name'])
-            
+
+
+            if bool(params['human']):
+                collect_teleop_data(sim, rb, params['rb_save_name'])
+            else:
+                collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, params['rb_save_name'])
             gradient_steps = params['num_gradient_steps']
-            state = sim.observe()
+
             for gradient_step in tqdm(range(0, gradient_steps), position=1, leave=False):
                 batch = rb.sample_batch(params['batch_size'])
                 states = batch['states']
@@ -210,13 +218,17 @@ def train(sim, params, replay_buffer_path=None):
         
         inp = input("#/n: ")
         if inp == "n":
+            global trained_policy
+            trained_policy = policy
+            safe_save_model(trained_policy, params["policy_save_name"] +".pt", save_state_dict=True)
+            global trained_qnetwork
+            trained_qnetwork = qnetwork
+            safe_save_model(trained_qnetwork, params["qnetwork_save_name"] +".pt", save_state_dict=True)
             break
         else:
             left_margin += num_iterations
             num_iterations = int(inp)             
-    global trained_policy
-    trained_policy = policy
-    safe_save_model(trained_policy, params["saved_model_name"] +".pt", save_state_dict=True)
+        
    
 def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, rb_save_name):
     for action_episode in tqdm(range(0, num_action_episodes), position=1, leave=False):
@@ -237,11 +249,13 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
     rb.save(save_name)   
 
 def collect_teleop_data(sim, rb, rb_save_name):
-    sim.has_renderer = True
-    sim.reset()
-    e = Episode()
+    
+    
     try:
-        speed = 1.0
+        speed = 0.1
+        
+        sim.reset(has_renderer=True)
+        e = Episode()
         state = sim.observe()
         while True:
             action = [0,0,0,0,0,0,0]
@@ -274,8 +288,13 @@ def collect_teleop_data(sim, rb, rb_save_name):
             reward = sim.reward()   
             next_state = sim.observe()
             e.append(state, action, reward, next_state)
-            print("\n", state, action, reward, next_state, "\n")         
+            print("State:", state, "Action:", action, "Reward:", reward, "Next_state:", next_state, "\n")         
             state = sim.observe()
+            if reward.item() == 1.0:
+                sim.reset()
+                rb.append(e)
+                rb.save(rb_save_name)
+                break
         
     except KeyboardInterrupt:
         sim.reset()
@@ -285,18 +304,19 @@ def collect_teleop_data(sim, rb, rb_save_name):
 def test(sim):
     import time
     sim.has_renderer = True
-    sim.reset()
     global trained_policy
-    state = sim.observe()
+
     num_steps = 100
-    for step in range(0, num_steps):
-        print(state)
-        action = trained_policy.sample(state)[0].detach().numpy()
-        print(action)        
-        sim.act(action) 
+    while True:
+        sim.reset(True)
         state = sim.observe()
-        print(sim.reward())
-        time.sleep(1)
+        for step in range(0, num_steps):
+            print("State", state)
+            action = trained_policy.sample(state)[0].detach().numpy()
+            print("Action:", action)        
+            sim.act(action) 
+            state = sim.observe()
+            print("Reward", sim.reward())
               
        
 def test_single_SAR(sim):
@@ -309,11 +329,19 @@ def test_single_SAR(sim):
     
     action, log_prob = policy.sample(state)
 
-def load_saved_model(model_path):
+def load_saved_policy(policy_path):
     global trained_policy
     trained_policy = PolicyNetwork()
-    trained_policy.load_state_dict(torch.load(model_path))
-    trained_policy.eval()  
+    trained_policy.load_state_dict(torch.load(policy_path))
+    trained_policy.eval()
+    return trained_policy
+    
+def load_saved_qnetwork(qnetwork_path):
+    global trained_qnetwork
+    trained_qnetwork = QNetwork()
+    trained_qnetwork.load_state_dict(torch.load(qnetwork_path))
+    trained_qnetwork.eval() 
+    return trained_qnetwork
 
 def safe_save_model(model, filename, save_state_dict=True):
     """
