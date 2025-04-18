@@ -117,7 +117,7 @@ class PolicyNetwork(nn.Module):
 
     def sample(self, state):
         mean, std = self.forward(state)
-        print("Means:", mean, "\nSTD:", std)
+        #print("Means:", mean, "\nSTD:", std)
         normal = torch.distributions.Normal(mean, std)
         action = normal.rsample()
         #print("Mean:", mean, "Std:", std, "Action:", action)
@@ -156,8 +156,8 @@ def train(sim, params, replay_buffer_path=None):
     while True:
         for iteration in tqdm(range(0, num_iterations), position=0):
             
-            collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, params['rb_save_name'])
-            #collect_teleop_data(sim, rb, params['rb_save_name'])
+            #collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, params['rb_save_name'])
+            collect_teleop_data(sim, rb, params['rb_save_name'])
             
             gradient_steps = params['num_gradient_steps']
             state = sim.observe()
@@ -278,6 +278,7 @@ def collect_teleop_data(sim, rb, rb_save_name):
             state = sim.observe()
         
     except KeyboardInterrupt:
+        sim.reset()
         rb.append(e)
         rb.save(rb_save_name)
 

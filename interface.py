@@ -84,7 +84,7 @@ class Sim:
     def act(self, action):
         obs, _, _, _ = self.env.step(action)
         self.mem_reward = torch.tensor(self.raise_reward(obs['cube_pos']), dtype=torch.float32)
-        self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim, no_cap=True)
+        self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim, no_cap=False)
         
         
         

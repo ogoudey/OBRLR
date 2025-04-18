@@ -6,7 +6,7 @@ training_parameters:
     num_iterations: 100
     len_episode: 50
     num_action_episodes: 100
-    saved_rb_name: "1raise_1e-1else_v1"
+    rb_save_name: "1raise_1e-1else_v1"
     batch_size: 64
     gamma: 0.99
     alpha: 0.2
