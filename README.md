@@ -57,4 +57,4 @@ Since a typical episode length is 50, a ReplayBuffer of size 100 has more like 5
 1. Create python virtual environment
 2. Download the `kortex_api` python wheel [here](https://artifactory.kinovaapps.com/ui/repos/tree/General/generic-public/kortex/API/2.2.0/kortex_api-2.2.0.post31-py3-none-any.whl)
 3. Run `pip install <path_to_that_download>`
-4. Download other requirements by e.g. `pip install requirements.txt` or individually 
+4. Download other requirements by e.g. `pip install -r requirements.txt` or use `pip install -r requirements_py_3_9_2.txt` if you are using python 3.9.2
