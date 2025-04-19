@@ -14,12 +14,14 @@ To load a Policy Network, use `--pi <path_of_policy>`
 ## Model + ReplayBuffer saving
 All replay buffers will be saved after data collection (teleop or policy-based) to replays/<rb_save_name>, which is specified in parameter files.
 
-Models (policy networks) are saved after training run (after `n` stops further iterating), they are saved to 'saved_model_name` in the parameters yaml.
+Models (policy networks and qnetworks) are saved after training runs (after `n` stops further iterating). They are saved to their respective ``save name''s in the parameters yaml.
+
+In summary, python script args are the load paths and parameter fields are the save paths.
 
 ## Collecting data from teleop
-In the data collection phase of training, there are ``data collection'' functions to call. `collect_data_from_policy` or `collect_teleop_data`.
+Data can be collected from teleoperation with the `human` parameter.
 
-Using teleop, hit <key>, <enter> like regular `input()`. Controls are:
+Using teleop, hit <key> then <enter>, like regular `input()`. Controls are:
     q: 
     w:      up, down, right, or left of eef
     e:
@@ -27,20 +29,9 @@ Using teleop, hit <key>, <enter> like regular `input()`. Controls are:
     t:      idk
     y:      idk
     u:      gripper
-    -1 through 1: sets the speed which all the other controlls use
+    -1 through 1: sets the speed which all the other controls use
 
 E.g. A sequence of inputs (0.2, u, u, u) closes the gripper with speed 0.2 three times.
-
-### Seeing detections
-To inspect detections (a part of the state representation), change
-```
-self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim, no_cap=True)
-```
-to
-```
-self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim, no_cap=False)
-```
-This will help with teleop, and with assessing the accuracy of YOLO.
 
 ### Inspecting ReplayBuffers
 ```
