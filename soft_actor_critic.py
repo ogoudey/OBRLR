@@ -158,8 +158,9 @@ def train(sim, params, policy_path=None, qnetwork_path=None, replay_buffer_path=
     num_iterations, num_action_episodes, len_episode = params['num_iterations'], params['num_action_episodes'], params['len_episode']
     gamma, alpha = params['gamma'], params['alpha']
     
-    
+    avg_succ_rts = []
     while True:
+    
         for iteration in tqdm(range(0, num_iterations), position=0):
 
 
@@ -210,24 +211,31 @@ def train(sim, params, policy_path=None, qnetwork_path=None, replay_buffer_path=
             _policy_losses_over_time.append(policy_loss.detach().numpy())
             # Per iteration plotting
             #
+        """
         plt.plot(range(0, num_iterations + left_margin), _policy_losses_over_time, label="Policy")
         plt.plot(range(0, num_iterations + left_margin), _q_losses_over_time, label="Q-Network")
         plt.legend()
         plt.title("lr policy " + str(params['policy_lr']) + ", lr q " + str(params['q_lr']) + " alpha " + str(params['alpha']))
         plt.show()
+        """
+        
+        global trained_policy
+        trained_policy = policy
+        safe_save_model(trained_policy, params["policy_save_name"] +".pt", save_state_dict=True)
+        global trained_qnetwork
+        trained_qnetwork = qnetwork
+        safe_save_model(trained_qnetwork, params["qnetwork_save_name"] +".pt", save_state_dict=True)
+        
+        avg_succ_rts.append(test(num_episodes=10, render=False))
         
         inp = input("#/n: ")
         if inp == "n":
-            global trained_policy
-            trained_policy = policy
-            safe_save_model(trained_policy, params["policy_save_name"] +".pt", save_state_dict=True)
-            global trained_qnetwork
-            trained_qnetwork = qnetwork
-            safe_save_model(trained_qnetwork, params["qnetwork_save_name"] +".pt", save_state_dict=True)
             break
         else:
             left_margin += num_iterations
-            num_iterations = int(inp)             
+            num_iterations = int(inp)     
+    plt.plot(range(0, num_iterations + left_margin), avg_succ_rts)
+    plt.show()      
    
 def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, rb_save_name):
     for action_episode in tqdm(range(0, num_action_episodes), position=1, leave=False):
@@ -256,8 +264,6 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
     rb.save(save_name)   
 
 def collect_teleop_data(sim, rb, rb_save_name):
-    
-    
     try:
         speed = 0.1
         
@@ -295,9 +301,9 @@ def collect_teleop_data(sim, rb, rb_save_name):
             reward = sim.reward()   
             next_state = sim.observe()
             e.append(state, action, reward, next_state)
-            print("State:", state, "Action:", action, "Reward:", reward, "Next_state:", next_state, "\n")         
+            print("State:", state, "\nAction:", action, "\nReward:", reward, "\nNext_state:", next_state, "\n")         
             state = sim.observe()
-            if reward.item() == 1.0:
+            if reward.item() == 1.0: # To reduce corrupt data, end the episode here
                 sim.reset()
                 rb.append(e)
                 rb.save(rb_save_name)
@@ -308,16 +314,15 @@ def collect_teleop_data(sim, rb, rb_save_name):
         rb.append(e)
         rb.save(rb_save_name)
 
-def test(sim):
+def test(sim, num_episodes=10, render=True):
     import time
     sim.has_renderer = True
     global trained_policy
-
-    num_steps = 100
+    num_steps = 50
     successes = 0
     trials = 0
-    while True:
-        sim.reset(True)
+    for episode in range(0, num_episods):
+        sim.reset(render)
         state = sim.observe()
         for step in range(0, num_steps):
             print("State", state)
@@ -333,7 +338,7 @@ def test(sim):
                 break
         trials += 1
         print("Success rate:", successes/trials)
-              
+    return successes/trials  
        
 def test_single_SAR(sim):
     policy = PolicyNetwork()

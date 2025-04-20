@@ -24,7 +24,7 @@ if __name__ == "__main__":
     try:
         with open(args.params, "r") as f:
             params = yaml.safe_load(f)
-        print("Loaded parameters")
+        print("Loaded parameters", args.params)
     except Exception:
         print(args.params, "no good. Loading default parameters...")
         with open("parameters/params.yaml", "r") as f:

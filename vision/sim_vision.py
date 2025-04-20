@@ -80,10 +80,10 @@ class SimVision:
                 eef_pos = points_eef[0]
             positions_array.extend(eef_pos)
             self.eef_position = eef_pos
-            print("Setting eef:", self.eef_position)
+            print("Found eef at:", self.eef_position)
         else:
             positions_array.extend(self.eef_position)
-            print("No eef:", self.eef_position)
+            print("No eef, using:", self.eef_position)
         if "cube" in labelled_pixel_dict.keys():    
             points_cube = cu.transform_from_pixels_to_world(np.array([labelled_pixel_dict["cube"]]), expanded_depth, camera_to_world_transform)
             if np.isnan(points_cube[0]).all(): # for some reason sometimes theres all Nan in the tensor
@@ -93,8 +93,8 @@ class SimVision:
                 cube_pos = points_cube[0]                
             positions_array.extend(cube_pos)
             self.cube_position = cube_pos
-            print("Setting cube:", self.cube_position)
+            print("Found cube at:", self.cube_position)
         else:
-            print("No cube:", self.cube_position)
+            print("No cube, using:", self.cube_position)
             positions_array.extend(self.cube_position)
         return np.array(positions_array)

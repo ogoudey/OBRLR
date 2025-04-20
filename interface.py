@@ -69,7 +69,7 @@ class Sim:
         
         # Initialize
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
-        self.mem_reward = torch.tensor(self.raise_reward(obs['cube_pos']), dtype=torch.float32)
+        self.mem_reward = torch.tensor(self.raise_reward(obs), dtype=torch.float32)
         self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim)
         
         self.sim_vision.reset()
@@ -89,19 +89,36 @@ class Sim:
 
     def act(self, action):
         obs, _, _, _ = self.env.step(action)
-        self.mem_reward = torch.tensor(self.raise_reward(obs['cube_pos']), dtype=torch.float32)
+        
         self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim, no_cap= not self.has_renderer)
+        
+        ### Update reward ###
+        raise_reward = torch.tensor(self.raise_reward(obs), dtype=torch.float32)
+        if not raise_reward == 1:
+            raise_reward += self.torq_cost(action)
+        self.mem_reward = raise_reward
+        
         
         
         
     def reward(self):
         return self.mem_reward
+    
+    def torq_cost(self, action):
+        action_norm = np.linalg.norm(action)
+        cost = action_norm/(-7)
+        print("Action cost:", cost)
         
-    def raise_reward(self, cube_pos):
-        diff = (cube_pos[2] - self.initial_cube_z)
-        print("Reward calculation:", cube_pos[2], "-", self.initial_cube_z, "=", diff)
+        return cost
         
-        if diff > .01:
+    def raise_reward(self, obs):
+        eef_pos = obs['robot0_eef_pos']
+        cube_pos = obs['cube_pos']
+        z_diff = (cube_pos[2] - self.initial_cube_z)
+        print("Reward calculation:", cube_pos[2], "-", self.initial_cube_z, "=", z_diff, "> 0.01? (1 or 0.1) AND...")
+        print("\teef_pos - cube_pos == X:", eef_pos, "-", cube_pos, "=", np.linalg.norm((eef_pos - cube_pos)))
+        delta = np.linalg.norm((eef_pos - cube_pos))
+        if z_diff > .01 and delta < 0.03:
             return 1
         else:
             return -0.1
@@ -126,7 +143,7 @@ if __name__ == "__main__":
     while True:
         action = np.array(json.loads(input("Action: ")))
         obs, _, _, _ = s.env.step(action)
-        reward = torch.tensor(s.raise_reward(obs['cube_pos']), dtype=torch.float32)
+        reward = torch.tensor(s.raise_reward(obs), dtype=torch.float32)
         print(torch.tensor([reward]))
         state = torch.tensor(np.concatenate((obs['robot0_eef_pos'], obs['cube_pos'])), dtype=torch.float32)
         print(state)
