@@ -288,6 +288,8 @@ def collect_teleop_data(sim, rb, rb_save_name):
                 action[5] = speed
             elif trigger == "u":
                 action[6] = speed
+            elif trigger == "p":
+                sim.take_photo(int(random.random()*10))
             else:
                 
                 print("Assigning speed!")
@@ -304,10 +306,10 @@ def collect_teleop_data(sim, rb, rb_save_name):
             print("State:", state, "\nAction:", action, "\nReward:", reward, "\nNext_state:", next_state, "\n")         
             state = sim.observe()
             if reward.item() == 1.0: # To reduce corrupt data, end the episode here
-                sim.reset()
+                #sim.reset()
                 rb.append(e)
                 rb.save(rb_save_name)
-                break
+                #break
         
     except KeyboardInterrupt:
         sim.reset()

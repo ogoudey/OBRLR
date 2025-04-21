@@ -134,6 +134,13 @@ class Sim:
                 #prnt("Passed", self.initial_distance / len(grades.keys()) * grade, "with", distance, "Reward:", len(grades.keys()) - grade)
                 return (len(self.grades.keys()) - grade) * 1
         return -1
+        
+    def take_photo(self, i):
+        # For gathering data
+        obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
+        img = Image.fromarray(obs["sideview_image"], 'RGB')
+        img_name = 'sideview'+str(i)+'.png'
+        img.save('vision/data/Robosuite2/' + img_name)
 
 
 if __name__ == "__main__":

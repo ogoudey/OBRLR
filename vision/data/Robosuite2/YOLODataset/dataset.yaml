@@ -1,0 +1,8 @@
+path: /home/olin/Robotics/Reinforcement Learning/final_project/vision/data/Robosuite2/YOLODataset
+train: images/train
+val: images/val
+test:
+
+names:
+    0: cube
+    1: eef
