@@ -14,7 +14,8 @@ if __name__ == "__main__":
     
     parser.add_argument('--params', type=str, required=False, help="Parameters file")
     parser.add_argument('--pi', type=str, required=False, help="Pre-trained policy")
-    parser.add_argument('--q', type=str, required=False, help="Pre-trained qnetwork")
+    parser.add_argument('--q1', type=str, required=False, help="Pre-trained critic1")
+    parser.add_argument('--q2', type=str, required=False, help="Pre-trained critic2")
     parser.add_argument('--rb', type=str, required=False, help="Existing replay buffer")
     parser.add_argument('--real', action='store_true')
     args = parser.parse_args()
@@ -39,28 +40,8 @@ if __name__ == "__main__":
     
     import soft_actor_critic as sac # includes policy network
     
-    if args.pi:
-        if args.q:
-            if args.rb:
-                sac.train(sim, params["training_parameters"], args.pi, args.q, args.rb)
-            else:
-                sac.train(sim, params["training_parameters"], args.pi, args.q)
-        else:
-            if args.rb:
-                sac.train(sim, params["training_parameters"], args.pi, None, args.rb)
-            else:
-                sac.train(sim, params["training_parameters"], args.pi)
 
-    else:
-        if args.q:
-            if args.rb:
-                sac.train(sim, params["training_parameters"], None, args.q, args.rb)
-            else:
-                sac.train(sim, params["training_parameters"], None, args.q)
-        else:
-            if args.rb:
-                sac.train(sim, params["training_parameters"], None, None, args.rb)
-            else:
-                sac.train(sim, params["training_parameters"])
+    sac.train(sim, params["training_parameters"], args)
 
-    sac.test(sim)       
+    sac.test(sim)
+    print("Done.")

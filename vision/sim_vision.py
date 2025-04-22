@@ -9,16 +9,18 @@ from collections import defaultdict
 
 image_id = 0
 
+vision_model_path = 'vision/cube_eef_detector.pt'
+
 class SimVision:
     def __init__(self):
-        self.vision_model = torch.hub.load('ultralytics/yolov5', 'custom', path='vision/best.pt', force_reload=True) # path is to the model originally in runs/expX/weights/
-        self.cube_position, self.eef_position = [], []
+        self.vision_model = torch.hub.load('ultralytics/yolov5', 'custom', path=vision_model_path, force_reload=True) # path is to the model originally in runs/expX/weights/
+        self.cube_position, self.eef_position = None, None
         self.reset()
     
     def reset(self):
         cv2.destroyAllWindows()
-        self.cube_position = [0.2913, 0.2629, 1.3597]
-        self.eef_position = [0.2927, 0.30001, 1.2391]
+        self.cube_position = np.array([0.2913, 0.2629, 1.3597])
+        self.eef_position = np.array([0.2927, 0.30001, 1.2391])
         #self.cap = cv2.VideoCapture(0)
             
     def detect(self, env_image, env_depth, sim, no_cap=True):
@@ -33,15 +35,26 @@ class SimVision:
         ###         ###
         result = self.vision_model(img)
         
+        centers = self.box_centers(result)
+        #print("Centers:", centers)
         if not no_cap:
-            renderings = result.render()
+        
+            rendering = result.render()[0].copy()
 
-            cv2.imshow("Detections", renderings[0])
+            for label, (x,y) in centers.items():
+                cv2.circle(rendering, (int(x), int(y)), radius=5, color=(255,255,255))         
+                cv2.putText(
+                    rendering, label, (int(x) + 8, int(y) - 8),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, lineType=cv2.LINE_AA
+                )
+            cv2.circle(rendering, (0, 0), radius=5, color=(0,122,255))
+            cv2.circle(rendering, (399, 399), radius=5, color=(0,122,255))
+            cv2.imshow("Detections", rendering)
             key = cv2.waitKey(5)  
         else:
             print("Showing detection?:", not no_cap)
         
-        centers = self.box_centers(result)
+        
         _3d_positions = self.positions_from_labelled_pixels(centers, env_depth, sim)
         euler_distance = self.cube_position - self.eef_position
         np_array = np.concatenate((_3d_positions, euler_distance))
@@ -52,8 +65,9 @@ class SimVision:
         centers = dict()
         box_per_obj_cat = defaultdict(lambda : False) # Right now we are gauranteed one box per item. Not necesarily the best box...
         for detection in result.xywh[0]:
+            #print(detection)
             if not box_per_obj_cat[detection[5]]:
-                centers[result.names[detection[5].item()]] = (detection[1].item(), detection[2].item())
+                centers[result.names[detection[5].item()]] = (detection[0].item(), detection[1].item())
         
 
         return centers   

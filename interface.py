@@ -92,6 +92,8 @@ class Sim:
         
         self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim, no_cap= not self.has_renderer)
         
+        print("Actual:", obs['robot0_eef_pos'], obs['cube_pos'], np.array(obs['robot0_eef_pos']) - np.array(obs['cube_pos']))
+        
         ### Update reward ###
         raise_reward = torch.tensor(self.raise_reward(obs), dtype=torch.float32)
         if not raise_reward == 1:
@@ -118,7 +120,7 @@ class Sim:
         print("Reward calculation:", cube_pos[2], "-", self.initial_cube_z, "=", z_diff, "> 0.01? (1 or 0.1) AND...")
         print("\teef_pos - cube_pos == X:", eef_pos, "-", cube_pos, "=", np.linalg.norm((eef_pos - cube_pos)))
         delta = np.linalg.norm((eef_pos - cube_pos))
-        if z_diff > .01 and delta < 0.03:
+        if z_diff > .01 and delta < 0.04:
             return 1
         else:
             return -0.1
@@ -140,7 +142,8 @@ class Sim:
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
         img = Image.fromarray(obs["sideview_image"], 'RGB')
         img_name = 'sideview'+str(i)+'.png'
-        img.save('vision/data/Robosuite2/' + img_name)
+        print("Photo-taking turned off.")
+        #img.save('vision/data/Robosuite2/' + img_name)
 
 
 if __name__ == "__main__":

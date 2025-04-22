@@ -14,6 +14,7 @@ import random
 import time
 import numpy as np
 import pickle
+import copy
 
 class ReplayBuffer:
     def __init__(self):
@@ -38,6 +39,10 @@ class ReplayBuffer:
             "rewards": torch.stack([torch.tensor(step.reward, dtype=torch.float32) for step in batch_steps]),
             "next_states": torch.stack([torch.tensor(step.next_state, dtype=torch.float32) for step in batch_steps])
         }
+        assert not torch.isnan(batch["states"]).any()
+        assert not torch.isnan(batch["actions"]).any()
+        assert not torch.isnan(batch["rewards"]).any()
+        assert not torch.isnan(batch["next_states"]).any()
         return batch
 
     def forget(self, forget_size):
@@ -134,26 +139,47 @@ class PolicyNetwork(nn.Module):
 trained_policy = None
 trained_qnetwork = None
 
-def train(sim, params, policy_path=None, qnetwork_path=None, replay_buffer_path=None):
+def train(sim, params, args):
     _policy_losses_over_time = []
     _q_losses_over_time = []
     left_margin = 0
-    if not policy_path:
+    
+    if not args.pi:
         policy = PolicyNetwork()
     else:
-        policy = load_saved_policy(policy_path)
-    if not qnetwork_path:
-        qnetwork = QNetwork()
+        policy = load_saved_policy(args.pi)
+    if not args.q1:
+        critic1 = QNetwork()
     else:
-        qnetwork = load_saved_qnetwork(qnetwork_path)
-    if not replay_buffer_path:
+        critic1 = load_saved_qnetwork(args.q1)
+    if not args.q2:
+        critic2 = QNetwork()
+    else:
+        critic2 = load_saved_qnetwork(args.q2)
+    
+    if not args.rb:
         rb = ReplayBuffer()
     else:
-        rb = load_replay_buffer(replay_buffer_path)
+        rb = load_replay_buffer(args.rb)
     
     policy_optimizer = optim.Adam(policy.parameters(), params['policy_lr'])
-    q_optimizer = optim.Adam(qnetwork.parameters(), params['q_lr'])
+    q1_optimizer = optim.Adam(critic1.parameters(), params['q1_lr'])
+    q2_optimizer = optim.Adam(critic2.parameters(), params['q2_lr'])   
     
+    for name, p in critic1.named_parameters():
+        print("critic1.",name," requires_grad=",p.requires_grad)
+
+    for name, p in critic2.named_parameters():
+        print("critic2.",name," requires_grad=",p.requires_grad)
+    
+    # Make 'target' networks 
+    qnetwork1 = copy.deepcopy(critic1)
+    qnetwork2 = copy.deepcopy(critic2)
+    
+    for p in qnetwork1.parameters():
+        p.requires_grad = False
+    for p in qnetwork2.parameters():
+        p.requires_grad = False  
     
     num_iterations, num_action_episodes, len_episode = params['num_iterations'], params['num_action_episodes'], params['len_episode']
     gamma, alpha = params['gamma'], params['alpha']
@@ -176,41 +202,78 @@ def train(sim, params, policy_path=None, qnetwork_path=None, replay_buffer_path=
                 actions = batch['actions']
                 rewards = batch['rewards']
                 next_states = batch['next_states']
+                
+                                
                 # Critic update #
                 state_actions = torch.cat((states, actions), dim=-1)
-                q_current = qnetwork(state_actions)
-                
+                q1_current = critic1(state_actions)
+                q2_current = critic2(state_actions)
+
+
+                next_actions, next_log_probs = policy.sample(next_states)
+                           
                 with torch.no_grad():
-                    next_actions, next_log_probs = policy.sample(next_states)
                     next_state_actions = torch.cat((next_states, next_actions), dim=-1)
-                    q_next = qnetwork(next_state_actions)
-                    target_q = rewards + gamma * (q_next - alpha * next_log_probs)
+                    q1_next = qnetwork1(next_state_actions)
+                    q2_next = qnetwork2(next_state_actions)
+                    min_q_next = torch.min(q1_next, q2_next)
+                    target_q = rewards + gamma * (min_q_next - (alpha * next_log_probs))
                     
-                q_loss = F.mse_loss(q_current, target_q)
-                
+                print("Q-next:", min_q_next.mean(), "+/-", min_q_next.std().item())
+                print("Log_prob:", next_log_probs.mean(), "+/-", next_log_probs.std().item())
+                print("Rewards:", rewards.mean(), "+/-", rewards.std().item())
+                q1_loss = F.mse_loss(q1_current, target_q)
+                q2_loss = F.mse_loss(q2_current, target_q)
+                assert not torch.isnan(q1_loss).any()
+                assert not torch.isnan(q2_loss).any()
+                                
                 # Actor update #
                 new_actions, log_probs = policy.sample(states)  
                 new_state_actions = torch.cat((states, new_actions), dim=-1)
-                q_val_new = qnetwork(new_state_actions)
+                q1_val_new = critic1(new_state_actions)
+                q2_val_new = critic2(new_state_actions)
+                q_val_new = torch.min(q1_val_new, q2_val_new).detach() # so no backwards pass to the critics
                 policy_loss = (alpha * log_probs - q_val_new).mean()
                 
+                print("log_probs.requires_grad?", log_probs.requires_grad, "grad_fn:", log_probs.grad_fn)
+                print("q_new_min.requires_grad?", q_val_new.requires_grad, "grad_fn:", q_val_new.grad_fn)
+
                 # Backpropogation #
+
+                q1_optimizer.zero_grad() 
+                q2_optimizer.zero_grad()    
+                q1_loss.backward()  
+                q2_loss.backward()
+                torch.nn.utils.clip_grad_norm_(critic1.parameters(), max_norm=1.0)
+                torch.nn.utils.clip_grad_norm_(critic2.parameters(), max_norm=1.0)
+                q1_optimizer.step()
+                q2_optimizer.step()
+                
                 policy_optimizer.zero_grad()
-                q_optimizer.zero_grad()    
-                
-                policy_loss.backward(retain_graph=True)  # retain_graph to use the graph further
-                q_loss.backward()  
-                
+                policy_loss.backward(retain_graph=True)
                 torch.nn.utils.clip_grad_norm_(policy.parameters(), max_norm=1.0)
-                torch.nn.utils.clip_grad_norm_(qnetwork.parameters(), max_norm=1.0)
-                
                 policy_optimizer.step()
-                q_optimizer.step()
+                
+                torch.autograd.set_detect_anomaly(True)
+                
+                mix = 0.005 # Polyak average
+                for param, target_param in zip(critic1.parameters(), qnetwork1.parameters()):
+                    target_param.data.mul_(1 - mix)
+                    target_param.data.add_(mix * param.data)
+                
+                for param, target_param in zip(critic2.parameters(), qnetwork2.parameters()):
+                    target_param.data.mul_(1 - mix)
+                    target_param.data.add_(mix * param.data)
+                
+                for name, p in policy.named_parameters():
+                    if p.grad is not None:
+                        print(name, p.grad.norm().item())
             #
-            _q_losses_over_time.append(q_loss.detach().numpy())
-            _policy_losses_over_time.append(policy_loss.detach().numpy())
+            #_q_losses_over_time.append(q_loss.detach().numpy())
+            #_policy_losses_over_time.append(policy_loss.detach().numpy())
             # Per iteration plotting
             #
+            #avg_succ_rts.append(test(sim, num_episodes=10, render=False))
         """
         plt.plot(range(0, num_iterations + left_margin), _policy_losses_over_time, label="Policy")
         plt.plot(range(0, num_iterations + left_margin), _q_losses_over_time, label="Q-Network")
@@ -222,20 +285,22 @@ def train(sim, params, policy_path=None, qnetwork_path=None, replay_buffer_path=
         global trained_policy
         trained_policy = policy
         safe_save_model(trained_policy, params["policy_save_name"] +".pt", save_state_dict=True)
-        global trained_qnetwork
-        trained_qnetwork = qnetwork
-        safe_save_model(trained_qnetwork, params["qnetwork_save_name"] +".pt", save_state_dict=True)
-        
-        avg_succ_rts.append(test(num_episodes=10, render=False))
+        global trained_critic1
+        trained_critic1 = critic1
+        safe_save_model(trained_critic1, params["critic1_save_name"] +".pt", save_state_dict=True)
+        global trained_critic2
+        trained_critic2 = critic2
+        safe_save_model(trained_critic2, params["critic2_save_name"] +".pt", save_state_dict=True)
         
         inp = input("#/n: ")
         if inp == "n":
             break
         else:
             left_margin += num_iterations
-            num_iterations = int(inp)     
-    plt.plot(range(0, num_iterations + left_margin), avg_succ_rts)
-    plt.show()      
+            num_iterations = int(inp)   
+    print(num_iterations + left_margin, avg_succ_rts)
+    #plt.plot(range(0, num_iterations + left_margin), avg_succ_rts)
+    #plt.show()      
    
 def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, rb_save_name):
     for action_episode in tqdm(range(0, num_action_episodes), position=1, leave=False):
@@ -256,7 +321,7 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
                 rb.save(rb_save_name)
                 print("********** Automatically arrived at reward***********")
                 print(reward.item())
-                input("Proceed?")
+                #input("Proceed?")
                 break
         sim.reset(has_renderer=True)
         rb.append(e)
@@ -306,10 +371,10 @@ def collect_teleop_data(sim, rb, rb_save_name):
             print("State:", state, "\nAction:", action, "\nReward:", reward, "\nNext_state:", next_state, "\n")         
             state = sim.observe()
             if reward.item() == 1.0: # To reduce corrupt data, end the episode here
-                #sim.reset()
+                sim.reset()
                 rb.append(e)
                 rb.save(rb_save_name)
-                #break
+                break
         
     except KeyboardInterrupt:
         sim.reset()
@@ -323,7 +388,7 @@ def test(sim, num_episodes=10, render=True):
     num_steps = 50
     successes = 0
     trials = 0
-    for episode in range(0, num_episods):
+    for episode in range(0, num_episodes):
         sim.reset(render)
         state = sim.observe()
         for step in range(0, num_steps):
