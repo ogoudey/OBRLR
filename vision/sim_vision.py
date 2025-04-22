@@ -87,8 +87,8 @@ class SimVision:
         """
         if "eef" in labelled_pixel_dict.keys():
             points_eef = cu.transform_from_pixels_to_world(np.array([labelled_pixel_dict["eef"]]), expanded_depth, camera_to_world_transform)
-            if np.isnan(points_eef[0]).all() or points_eef[0][0] > 5: # arbitrary attempts at removing bad input... [nan] or 2e^35 (??)
-                print("Bad input in array diverted.")
+            if np.isnan(points_eef[0]).any() or np.any((points_eef[0] < -2) | (points_eef[0] > 2)): # arbitrary attempts at removing bad input like [nan], -4e_20, or 2e^35 (??)
+                print("Bad input in eef pos diverted: ", points_eef[0])
                 eef_pos = self.eef_position
             else:
                 eef_pos = points_eef[0]
@@ -100,8 +100,8 @@ class SimVision:
             print("No eef:", self.eef_position)
         if "cube" in labelled_pixel_dict.keys():    
             points_cube = cu.transform_from_pixels_to_world(np.array([labelled_pixel_dict["cube"]]), expanded_depth, camera_to_world_transform)
-            if np.isnan(points_cube[0]).all(): # for some reason sometimes theres all Nan in the tensor
-                print("[nan] array diverted.")
+            if np.isnan(points_cube[0]).any() or np.any((points_cube[0] < -2) | (points_cube[0] > 2)): # for some reason sometimes theres all Nan in the tensor
+                print("Bad input in cube pos diverted:", points_cube[0])
                 cube_pos = self.cube_position
             else:   
                 cube_pos = points_cube[0]                

@@ -118,7 +118,7 @@ class Sim:
         cube_pos = obs['cube_pos']
         z_diff = (cube_pos[2] - self.initial_cube_z)
         print("Reward calculation:", cube_pos[2], "-", self.initial_cube_z, "=", z_diff, "> 0.01? (1 or 0.1) AND...")
-        print("\teef_pos - cube_pos == X:", eef_pos, "-", cube_pos, "=", np.linalg.norm((eef_pos - cube_pos)))
+        print("\teef_pos - cube_pos == X:", eef_pos, "-", cube_pos, "=", np.linalg.norm((eef_pos - cube_pos)), "< 0.04?")
         delta = np.linalg.norm((eef_pos - cube_pos))
         if z_diff > .01 and delta < 0.04:
             return 1

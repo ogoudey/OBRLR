@@ -16,6 +16,8 @@ import numpy as np
 import pickle
 import copy
 
+torch.autograd.set_detect_anomaly(True)
+
 class ReplayBuffer:
     def __init__(self):
         self.episodes = []
@@ -48,6 +50,17 @@ class ReplayBuffer:
     def forget(self, forget_size):
         for i in range(0, forget_size):
             self.episodes.remove(self.episodes[0])
+    
+    def clean(self):
+        to_del = []
+        for episode in self.episodes:
+            for step in episode.steps:
+                print(step.state)
+                if np.any((step.state < -2) | (step.state > 2)) or np.any((step.action < -2) | (step.action > 2)) or np.any((step.reward < -2) | (step.reward > 1)):
+                    to_del.append(episode)
+        for episode in to_del:
+            self.episodes.remove(episode)
+        print("Removed", len(to_del), "episodes from ReplayBuffer")
             
     def save(self, name):
         with open("replays/" + name + ".tmp", "wb") as f:
@@ -72,10 +85,10 @@ class Episode:
     
 class Step:
     def __init__(self, state, action, reward, next_state):
-        self.state = state
+        self.state = state.detach().numpy()
         self.action = action
-        self.reward = reward
-        self.next_state = next_state
+        self.reward = reward.detach().numpy()
+        self.next_state = next_state.detach().numpy()
 
 class QNetwork(nn.Module):
     def __init__(self, state_action_dim=16, q_value_dim=1, hidden_dim=256):
@@ -116,7 +129,7 @@ class PolicyNetwork(nn.Module):
         mean = self.mean_layer(x)
 
         log_std = self.log_std_layer(x)
-        log_std = torch.clamp(log_std, min=-20, max=2)
+        log_std = torch.clamp(log_std, min=-5, max=2)
         std = torch.exp(log_std)
         return mean, std
 
@@ -124,9 +137,10 @@ class PolicyNetwork(nn.Module):
         mean, std = self.forward(state)
         #print("Means:", mean, "\nSTD:", std)
         normal = torch.distributions.Normal(mean, std)
-        action = normal.rsample()
+        dist = torch.distributions.TransformedDistribution(normal, torch.distributions.TanhTransform(cache_size=1))
+        action = dist.rsample()
         #print("Mean:", mean, "Std:", std, "Action:", action)
-        log_prob = normal.log_prob(action).sum(dim=-1, keepdim=True)
+        log_prob = dist.log_prob(action).sum(dim=-1, keepdim=True)
         return action, log_prob
 
 
@@ -197,64 +211,54 @@ def train(sim, params, args):
             gradient_steps = params['num_gradient_steps']
 
             for gradient_step in tqdm(range(0, gradient_steps), position=1, leave=False):
+                print("Replay buffer size:", len(rb.episodes), "episodes.")
                 batch = rb.sample_batch(params['batch_size'])
                 states = batch['states']
                 actions = batch['actions']
                 rewards = batch['rewards']
                 next_states = batch['next_states']
                 
-                                
+                if (rewards > .99).any():
+                    print(f"⚡️ Positive reward in this batch at gradient step {gradient_step}")
+                    input("Proceed?")
+                
                 # Critic update #
                 state_actions = torch.cat((states, actions), dim=-1)
                 q1_current = critic1(state_actions)
                 q2_current = critic2(state_actions)
 
 
-                next_actions, next_log_probs = policy.sample(next_states)
+                
                            
                 with torch.no_grad():
+                    next_actions, next_log_probs = policy.sample(next_states)
                     next_state_actions = torch.cat((next_states, next_actions), dim=-1)
                     q1_next = qnetwork1(next_state_actions)
                     q2_next = qnetwork2(next_state_actions)
                     min_q_next = torch.min(q1_next, q2_next)
-                    target_q = rewards + gamma * (min_q_next - (alpha * next_log_probs))
+                    raw_target      = rewards + gamma * (min_q_next - (alpha * next_log_probs))
+                        # clamp the change around your reward scale
+                    target_q = torch.clamp(raw_target, -1.0, 1.0)
+
                     
-                print("Q-next:", min_q_next.mean(), "+/-", min_q_next.std().item())
+                print("\nQ-next:", min_q_next.mean(), "+/-", min_q_next.std().item())
                 print("Log_prob:", next_log_probs.mean(), "+/-", next_log_probs.std().item())
                 print("Rewards:", rewards.mean(), "+/-", rewards.std().item())
                 q1_loss = F.mse_loss(q1_current, target_q)
                 q2_loss = F.mse_loss(q2_current, target_q)
                 assert not torch.isnan(q1_loss).any()
                 assert not torch.isnan(q2_loss).any()
-                                
-                # Actor update #
-                new_actions, log_probs = policy.sample(states)  
-                new_state_actions = torch.cat((states, new_actions), dim=-1)
-                q1_val_new = critic1(new_state_actions)
-                q2_val_new = critic2(new_state_actions)
-                q_val_new = torch.min(q1_val_new, q2_val_new).detach() # so no backwards pass to the critics
-                policy_loss = (alpha * log_probs - q_val_new).mean()
-                
-                print("log_probs.requires_grad?", log_probs.requires_grad, "grad_fn:", log_probs.grad_fn)
-                print("q_new_min.requires_grad?", q_val_new.requires_grad, "grad_fn:", q_val_new.grad_fn)
 
-                # Backpropogation #
+                # Critic Backpropogation #
 
                 q1_optimizer.zero_grad() 
                 q2_optimizer.zero_grad()    
                 q1_loss.backward()  
                 q2_loss.backward()
-                torch.nn.utils.clip_grad_norm_(critic1.parameters(), max_norm=1.0)
-                torch.nn.utils.clip_grad_norm_(critic2.parameters(), max_norm=1.0)
+                torch.nn.utils.clip_grad_norm_(critic1.parameters(), 1.0)
+                torch.nn.utils.clip_grad_norm_(critic2.parameters(), 1.0)
                 q1_optimizer.step()
                 q2_optimizer.step()
-                
-                policy_optimizer.zero_grad()
-                policy_loss.backward(retain_graph=True)
-                torch.nn.utils.clip_grad_norm_(policy.parameters(), max_norm=1.0)
-                policy_optimizer.step()
-                
-                torch.autograd.set_detect_anomaly(True)
                 
                 mix = 0.005 # Polyak average
                 for param, target_param in zip(critic1.parameters(), qnetwork1.parameters()):
@@ -265,9 +269,32 @@ def train(sim, params, args):
                     target_param.data.mul_(1 - mix)
                     target_param.data.add_(mix * param.data)
                 
+                 # Actor update #
+                new_actions, log_probs = policy.sample(states)  
+                new_state_actions = torch.cat((states, new_actions), dim=-1)
+                q1_val_new = critic1(new_state_actions)
+                q2_val_new = critic2(new_state_actions)
+                q_val_new = torch.min(q1_val_new, q2_val_new)
+                policy_loss = (alpha * log_probs - q_val_new).mean()
+                
+                print("log_probs.requires_grad?", log_probs.requires_grad, "grad_fn:", log_probs.grad_fn)
+                print("q_new_min.requires_grad?", q_val_new.requires_grad, "grad_fn:", q_val_new.grad_fn)
+                
                 for name, p in policy.named_parameters():
-                    if p.grad is not None:
-                        print(name, p.grad.norm().item())
+                    print(f"  after backward {name}.grad norm:", None if p.grad is None else p.grad.norm().item())
+                        
+                policy_optimizer.zero_grad()
+                policy_loss.backward()
+                torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
+                policy_optimizer.step()
+                
+                
+                
+
+                
+                
+                
+                
             #
             #_q_losses_over_time.append(q_loss.detach().numpy())
             #_policy_losses_over_time.append(policy_loss.detach().numpy())
@@ -293,12 +320,16 @@ def train(sim, params, args):
         safe_save_model(trained_critic2, params["critic2_save_name"] +".pt", save_state_dict=True)
         
         inp = input("#/n: ")
+        while not inp == "n":
+            try:
+                num_iterations = int(inp)
+                left_margin += num_iterations
+                break
+            except ValueError:
+                inp = input("#/n: ")
         if inp == "n":
             break
-        else:
-            left_margin += num_iterations
-            num_iterations = int(inp)   
-    print(num_iterations + left_margin, avg_succ_rts)
+    #print(num_iterations + left_margin, avg_succ_rts)
     #plt.plot(range(0, num_iterations + left_margin), avg_succ_rts)
     #plt.show()      
    
@@ -323,7 +354,11 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
                 print(reward.item())
                 #input("Proceed?")
                 break
-        sim.reset(has_renderer=True)
+            if reward.item() <= -1:
+                print("********** Arrived at very negative reward***********")
+                print(reward.item())
+                input("Proceed?")
+        sim.reset(has_renderer=False)
         rb.append(e)
     save_name = rb_save_name
     rb.save(save_name)   
@@ -336,9 +371,8 @@ def collect_teleop_data(sim, rb, rb_save_name):
         e = Episode()
         state = sim.observe()
         while True:
-            action = [0,0,0,0,0,0,0]
+            action = np.array([0.0,0.0,0.0,0.0,0.0,0.0,0.0])
             trigger = input("Button: ")
-            print(trigger)
             if trigger == "q":
                 action[0] = speed
             elif trigger == "w":
@@ -363,12 +397,12 @@ def collect_teleop_data(sim, rb, rb_save_name):
                 except ValueError:
                     print("OOPS!")
                     continue
-                
-            sim.act(np.array(action))
+
+            sim.act(action)
             reward = sim.reward()   
             next_state = sim.observe()
             e.append(state, action, reward, next_state)
-            print("State:", state, "\nAction:", action, "\nReward:", reward, "\nNext_state:", next_state, "\n")         
+            print("State:", state, "\nAction:", action, "\nReward:", reward, "\nState':", next_state, "\n")         
             state = sim.observe()
             if reward.item() == 1.0: # To reduce corrupt data, end the episode here
                 sim.reset()

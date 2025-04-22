@@ -1,0 +1,18 @@
+other_parameters:
+    
+training_parameters:
+    policy_lr: 0.0003
+    q1_lr: 0.0003
+    q2_lr: 0.0003
+    num_iterations: 5
+    human: False
+    len_episode: 50
+    num_action_episodes: 5
+    rb_save_name: "mixed_raised_cost_w_backwards"
+    batch_size: 64
+    gamma: 0.99
+    alpha: 0.2
+    num_gradient_steps: 500
+    policy_save_name: "mixed_pi_v2"
+    critic1_save_name: "mixed_q1_v2"
+    critic2_save_name: "mixed_q2_v2"
