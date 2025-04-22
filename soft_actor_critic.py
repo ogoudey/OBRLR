@@ -220,7 +220,7 @@ def train(sim, params, args):
                 
                 if (rewards > .99).any():
                     print(f"⚡️ Positive reward in this batch at gradient step {gradient_step}")
-                    input("Proceed?")
+                    #input("Proceed?")
                 
                 # Critic update #
                 state_actions = torch.cat((states, actions), dim=-1)
@@ -357,7 +357,7 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
             if reward.item() <= -1:
                 print("********** Arrived at very negative reward***********")
                 print(reward.item())
-                input("Proceed?")
+                #input("Proceed?")
         sim.reset(has_renderer=False)
         rb.append(e)
     save_name = rb_save_name
@@ -388,7 +388,7 @@ def collect_teleop_data(sim, rb, rb_save_name):
             elif trigger == "u":
                 action[6] = speed
             elif trigger == "p":
-                sim.take_photo(int(random.random()*10))
+                sim.take_photo(int(random.random()*100))
             else:
                 
                 print("Assigning speed!")

@@ -142,8 +142,8 @@ class Sim:
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
         img = Image.fromarray(obs["sideview_image"], 'RGB')
         img_name = 'sideview'+str(i)+'.png'
-        print("Photo-taking turned off.")
-        #img.save('vision/data/Robosuite2/' + img_name)
+        #print("Photo-taking turned off.")
+        img.save('vision/data/Robosuite3/Images' + img_name)
 
 
 if __name__ == "__main__":
