@@ -92,11 +92,12 @@ class Sim:
         normalized_state = state # i.e. not normalized
         return normalized_state
 
-    def act(self, action):
+    def act(self, action, w_video=False):
         standardized_action = [action[0], action[1], action[2], 0, 0, 0, action[3]]
+        print("Standardized action:", standardized_action)
         obs, _, _, _ = self.env.step(standardized_action)
         
-        detection = self.sim_vision.detect(obs, self.env.sim)
+        detection = self.sim_vision.detect(obs, self.env.sim, no_cap = not w_video)
         
         self.state = detection
         print("State:", self.state)

@@ -286,7 +286,7 @@ def train(sim, params, args):
         global trained_critic2
         trained_critic2 = critic2
         safe_save_model(trained_critic2, params["configuration_name"], "Q2", save_state_dict=True)
-        
+        """
         inp = input("#/n: ")
         while not inp == "n":
             try:
@@ -296,7 +296,9 @@ def train(sim, params, args):
             except ValueError:
                 inp = input("#/n: ")
         if inp == "n":
-            break     
+            break
+        """
+        break # Exits after num_iterations.     
    
 def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, rb_save_name):
     for action_episode in tqdm(range(0, num_action_episodes), position=1, leave=False):
@@ -311,13 +313,13 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
             e.append(state, action, reward, next_state)
             if reward.item() == sim.reward_for_raise:
                 pass
-                sim.reset()
-                rb.append(e)
-                rb.save(rb_save_name)
+                #sim.reset()
+                #rb.append(e)
+                #rb.save(rb_save_name)
                 print("********** Automatically arrived at reward***********")
                 print(reward.item())
                 #input("Proceed?")
-                break
+                #break
             else:
                 pass
                 
@@ -338,12 +340,8 @@ def collect_teleop_data(sim, rb, rb_save_name):
         e = Episode()
         state = sim.observe()
         while True:
-            ###
-            gripper_pos = obs["robot0_gripper_pos"]
-            print("Gripper position:", gripper_pos)
-            print("Actual:", obs['robot0_eef_pos'])
-            ###
-            action = np.array([0.0,0.0,0.0,0.0,0.0,0.0,0.0])
+            
+            action = np.array([0.0,0.0,0.0,0.0])
             trigger = input("Button: ")
             if trigger == "q":
                 action[0] = speed
@@ -353,12 +351,6 @@ def collect_teleop_data(sim, rb, rb_save_name):
                 action[2] = speed
             elif trigger == "r":
                 action[3] = speed
-            elif trigger == "t":
-                action[4] = speed
-            elif trigger == "y":
-                action[5] = speed
-            elif trigger == "u":
-                action[6] = speed
             elif trigger == "p":
                 sim.take_photo(int(random.random()*100))
             else:
@@ -368,18 +360,18 @@ def collect_teleop_data(sim, rb, rb_save_name):
                 except ValueError:
                     print("OOPS!")
                     continue
-            sim.act(action)
+            sim.act(action, w_video=True)
             reward = sim.reward()   
             next_state = sim.observe()
             
             print("State:", state, "\nAction:", action, "\nReward:", reward, "\nState':", next_state, "\n")         
             state = sim.observe()
-            if reward.item() == sim.reward_for_raise: # To reduce corrupt data, end the episode here    
+            if reward.item() == sim.reward_for_raise: # To reduce corrupt data, end the episode here -- REDACTED   
                 pass
-                sim.reset()
-                rb.append(e)
-                rb.save(rb_save_name)
-                break
+                #sim.reset()
+                #rb.append(e)
+                #rb.save(rb_save_name)
+                #break
             else:
                 e.append(state, action, reward, next_state)
         
