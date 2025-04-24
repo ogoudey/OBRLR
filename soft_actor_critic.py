@@ -216,7 +216,6 @@ def train(sim, params, args):
                 
                 if (rewards > .99).any():
                     print(f"⚡️ Positive reward in this batch at gradient step {gradient_step}")
-                
                 # Critic update #
                 state_actions = torch.cat((states, actions), dim=-1)
                 q1_current = critic1(state_actions)
@@ -428,24 +427,16 @@ def load_saved_qnetwork(qnetwork_path):
     return trained_qnetwork
 
 def safe_save_model(model, configuration_name, model_type, save_state_dict=True):
-    """
-    Safely save a PyTorch model or its state_dict to a file using an atomic write.
-    
-    Parameters:
-        model (torch.nn.Module): The model to save.
-        filename (str): The target filename where the model will be saved.
-        save_state_dict (bool): If True, only the model's state_dict will be saved.
-                                Otherwise, the entire model is saved.
-    """
+
     # Choose the data to save
     data_to_save = model.state_dict() if save_state_dict else model
-
+    filename = "configurations/" + configuration_name + "/" + model_type + ".pt"
     # Get the target directory from filename
-    target_dir = os.path.dirname(os.path.abspath("configurations/" + configuration_name + "/" + model_type + ".pt"))
+    target_dir = os.path.dirname(os.path.abspath(filename))
     
     # Ensure the target directory exists
     os.makedirs(target_dir, exist_ok=True)
-
+    
     # Use a temporary file in the same directory for atomic write.
     with tempfile.NamedTemporaryFile(dir=target_dir, delete=False) as tmp_file:
         temp_filename = tmp_file.name
