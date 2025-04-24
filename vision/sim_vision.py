@@ -23,7 +23,10 @@ class SimVision:
         self.eef_position = np.array([0.2927, 0.30001, 1.2391])
         #self.cap = cv2.VideoCapture(0)
             
-    def detect(self, env_image, env_depth, sim, no_cap=True):
+    def detect(self, obs, sim, no_cap=True):
+        env_image = obs["sideview_image"]
+        env_depth = obs["sideview_depth"]
+        
         img = Image.fromarray(env_image, 'RGB')
         ### CHANGE FOR IMAGE DATA COLLECTION ###
         save_img_data = False
@@ -56,11 +59,22 @@ class SimVision:
         
         
         _3d_positions = self.positions_from_labelled_pixels(centers, env_depth, sim)
-        euler_distance = self.cube_position - self.eef_position
-        np_array = np.concatenate((_3d_positions, euler_distance))
-        print("Detection:", np_array)
+        distance = self.cube_position - obs['robot0_eef_pos']
+        grasp = self.grasp_position(obs)
+        pp = obs['robot0_eef_pos']
+        print(pp)
+        print(_3d_positions)
+        print(distance)
+        print(grasp)
+        np_array = np.concatenate((pp, _3d_positions, distance, grasp))
+        print("Detection:", np_array, "(length:", len(np_array), ")")
         return torch.tensor(np_array, dtype=torch.float32)
-
+    
+    def grasp_position(self, obs):
+        gripper_pos = obs["robot0_gripper_qpos"]    
+        opening = gripper_pos.mean() 
+        return np.array([opening])
+    
     def box_centers(self, result):
         centers = dict()
         box_per_obj_cat = defaultdict(lambda : False) # Right now we are gauranteed one box per item. Not necesarily the best box...
@@ -84,7 +98,7 @@ class SimVision:
         for obj in labelled_pixel_dict.keys():
             points = cu.transform_from_pixels_to_world(np.array([labelled_pixel_dict[obj]]), expanded_depth, camera_to_world_transform)
             object_3d_positions[obj] = points[0]
-        """
+        
         if "eef" in labelled_pixel_dict.keys():
             points_eef = cu.transform_from_pixels_to_world(np.array([labelled_pixel_dict["eef"]]), expanded_depth, camera_to_world_transform)
             if np.isnan(points_eef[0]).any() or np.any((points_eef[0] < -2) | (points_eef[0] > 2)): # arbitrary attempts at removing bad input like [nan], -4e_20, or 2e^35 (??)
@@ -98,6 +112,7 @@ class SimVision:
         else:
             positions_array.extend(self.eef_position)
             print("No eef:", self.eef_position)
+        """
         if "cube" in labelled_pixel_dict.keys():    
             points_cube = cu.transform_from_pixels_to_world(np.array([labelled_pixel_dict["cube"]]), expanded_depth, camera_to_world_transform)
             if np.isnan(points_cube[0]).any() or np.any((points_cube[0] < -2) | (points_cube[0] > 2)): # for some reason sometimes theres all Nan in the tensor

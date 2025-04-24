@@ -91,12 +91,15 @@ class Step:
         self.next_state = next_state.detach().numpy()
 
 class QNetwork(nn.Module):
-    def __init__(self, state_action_dim=16, q_value_dim=1, hidden_dim=256):
-        super(QNetwork, self).__init__()
-        self.fc1 = nn.Linear(state_action_dim, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+    def __init__(self, params):
         
-        self.q_value_layer = nn.Linear(hidden_dim, q_value_dim)
+        state_action_dim = 14 # 10 state dimension, 4 action dimension
+        q_value_dim = 1
+        super(QNetwork, self).__init__()
+        self.fc1 = nn.Linear(state_action_dim, params['hidden_layers']['l1'])
+        self.fc2 = nn.Linear(params['hidden_layers']['l1'], params['hidden_layers']['l2'])
+        
+        self.q_value_layer = nn.Linear(params['hidden_layers']['l2'], q_value_dim)
         
     def forward(self, state_action):
         x = F.relu(self.fc1(state_action))
@@ -112,14 +115,16 @@ class QNetwork(nn.Module):
         return q_value
 
 class PolicyNetwork(nn.Module):
-    def __init__(self, state_dim=9, action_dim=7, hidden_dim=256):
+    def __init__(self, params):
+        state_dim = 10 # 3 eef location, 3 cube location, 3 delta locations, gripper
+        action_dim = 4 # 3 dimensions, gripper
         super(PolicyNetwork, self).__init__()
-        self.fc1 = nn.Linear(state_dim, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc1 = nn.Linear(state_dim, params['hidden_layers']['l1'])
+        self.fc2 = nn.Linear(params['hidden_layers']['l1'], params['hidden_layers']['l2'])
         
-        self.mean_layer = nn.Linear(hidden_dim, action_dim)
+        self.mean_layer = nn.Linear(params['hidden_layers']['l2'], action_dim)
         
-        self.log_std_layer = nn.Linear(hidden_dim, action_dim)
+        self.log_std_layer = nn.Linear(params['hidden_layers']['l2'], action_dim)
     
     def forward(self, state):
         x = F.relu(self.fc1(state))
@@ -155,15 +160,15 @@ trained_qnetwork = None
 
 def train(sim, params, args):
     if not args.pi:
-        policy = PolicyNetwork()
+        policy = PolicyNetwork(params['networks']['policy'])
     else:
         policy = load_saved_policy(args.pi)
     if not args.q1:
-        critic1 = QNetwork()
+        critic1 = QNetwork(params['networks']['q'])
     else:
         critic1 = load_saved_qnetwork(args.q1)
     if not args.q2:
-        critic2 = QNetwork()
+        critic2 = QNetwork(params['networks']['q'])
     else:
         critic2 = load_saved_qnetwork(args.q2)
     
@@ -172,15 +177,9 @@ def train(sim, params, args):
     else:
         rb = load_replay_buffer(args.rb)
     
-    policy_optimizer = optim.Adam(policy.parameters(), params['policy_lr'])
-    q1_optimizer = optim.Adam(critic1.parameters(), params['q1_lr'])
-    q2_optimizer = optim.Adam(critic2.parameters(), params['q2_lr'])   
-    
-    for name, p in critic1.named_parameters():
-        print("critic1.",name," requires_grad=",p.requires_grad)
-
-    for name, p in critic2.named_parameters():
-        print("critic2.",name," requires_grad=",p.requires_grad)
+    policy_optimizer = optim.Adam(policy.parameters(), params['networks']['policy']['lr'])
+    q1_optimizer = optim.Adam(critic1.parameters(), params['networks']['q']['lr'])
+    q2_optimizer = optim.Adam(critic2.parameters(), params['networks']['q']['lr'])
     
     # Make 'target' networks 
     qnetwork1 = copy.deepcopy(critic1)
@@ -191,8 +190,9 @@ def train(sim, params, args):
     for p in qnetwork2.parameters():
         p.requires_grad = False  
     
-    num_iterations, num_action_episodes, len_episode = params['num_iterations'], params['num_action_episodes'], params['len_episode']
-    gamma, alpha = params['gamma'], params['alpha']
+    
+    num_iterations, num_action_episodes, len_episode = params['algorithm']['num_iterations'], params['algorithm']['num_action_episodes'], params['algorithm']['len_episode']
+    gamma, alpha = params['algorithm']['gamma'], params['algorithm']['alpha']
     
     avg_succ_rts = []
     while True:
@@ -200,15 +200,15 @@ def train(sim, params, args):
         for iteration in tqdm(range(0, num_iterations), position=0):
 
 
-            if bool(params['human']):
+            if bool(params['algorithm']['human']):
                 collect_teleop_data(sim, rb, params['rb_save_name'])
             else:
                 collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, params['rb_save_name'])
-            gradient_steps = params['num_gradient_steps']
+            gradient_steps = params['algorithm']['num_gradient_steps']
 
             for gradient_step in tqdm(range(0, gradient_steps), position=1, leave=False):
                 print("Replay buffer size:", len(rb.episodes), "episodes.")
-                batch = rb.sample_batch(params['batch_size'])
+                batch = rb.sample_batch(params['algorithm']['batch_size'])
                 states = batch['states']
                 actions = batch['actions']
                 rewards = batch['rewards']
@@ -216,7 +216,6 @@ def train(sim, params, args):
                 
                 if (rewards > .99).any():
                     print(f"⚡️ Positive reward in this batch at gradient step {gradient_step}")
-                    #input("Proceed?")
                 
                 # Critic update #
                 state_actions = torch.cat((states, actions), dim=-1)
@@ -269,9 +268,7 @@ def train(sim, params, args):
                 q_val_new = torch.min(q1_val_new, q2_val_new)
                 policy_loss = (alpha * log_probs - q_val_new).mean()
                 
-                print("log_probs.requires_grad?", log_probs.requires_grad, "grad_fn:", log_probs.grad_fn)
-                print("q_new_min.requires_grad?", q_val_new.requires_grad, "grad_fn:", q_val_new.grad_fn)
-                
+                print("Policy parameters:")
                 for name, p in policy.named_parameters():
                     print(f"  after backward {name}.grad norm:", None if p.grad is None else p.grad.norm().item())
                         
@@ -336,6 +333,11 @@ def collect_teleop_data(sim, rb, rb_save_name):
         e = Episode()
         state = sim.observe()
         while True:
+            ###
+            gripper_pos = obs["robot0_gripper_pos"]
+            print("Gripper position:", gripper_pos)
+            print("Actual:", obs['robot0_eef_pos'])
+            ###
             action = np.array([0.0,0.0,0.0,0.0,0.0,0.0,0.0])
             trigger = input("Button: ")
             if trigger == "q":

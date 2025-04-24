@@ -27,7 +27,7 @@ if __name__ == "__main__":
             params = yaml.safe_load(f)
         print("Loaded parameters")
     except Exception:
-        print(args.params, "is malformated.\n\tPlease give a correct path to a well-formed YAML file.")
+        raise Exception("Missing parameters file.")
         
     
     print(params["other_parameters"]["description"])
@@ -37,7 +37,7 @@ if __name__ == "__main__":
         # unused in current algorithm
 
     import interface
-    sim = interface.Sim()
+    sim = interface.Sim(params["training_parameters"]["reward_function"])
     
     import soft_actor_critic as sac # includes policy network
     

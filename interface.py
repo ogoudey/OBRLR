@@ -22,7 +22,7 @@ import os
 
 
 class Sim:
-    def __init__(self):
+    def __init__(self, reward_params):
         self.env, self.mem_reward, self.state = None, None, None
         # Initialize (reset)
         self.has_renderer = False
@@ -44,6 +44,10 @@ class Sim:
         
         self.reset()
         
+        self.use_cost = bool(reward_params["cost"])
+        self.cost_scale = reward_params["cost_scale"]
+        self.reward_for_raise = reward_params["raise"]
+        
         
         
           
@@ -59,7 +63,7 @@ class Sim:
                 camera_heights=400,
                 camera_widths=400,
                 camera_names="sideview",
-                camera_depths=True,
+                camera_depths=True
             )
         else:
             self.env.has_renderer=has_renderer
@@ -70,7 +74,8 @@ class Sim:
         # Initialize
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
         self.mem_reward = torch.tensor(self.raise_reward(obs), dtype=torch.float32)
-        self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim)
+        detection = self.sim_vision.detect(obs, self.env.sim, no_cap= not self.has_renderer)
+        self.state = detection
         
         self.sim_vision.reset()
         
@@ -88,19 +93,24 @@ class Sim:
         return normalized_state
 
     def act(self, action):
-        obs, _, _, _ = self.env.step(action)
+        standardized_action = [action[0], action[1], action[2], 0, 0, 0, action[3]]
+        obs, _, _, _ = self.env.step(standardized_action)
         
-        self.state = self.sim_vision.detect(obs["sideview_image"], obs["sideview_depth"], self.env.sim, no_cap= not self.has_renderer)
+        detection = self.sim_vision.detect(obs, self.env.sim)
         
-        print("Actual:", obs['robot0_eef_pos'], obs['cube_pos'], np.array(obs['robot0_eef_pos']) - np.array(obs['cube_pos']))
+        self.state = detection
+        print("State:", self.state)
+        #print("Actual:", obs['robot0_eef_pos'] + obs['cube_pos'] + obs['robot0_gripper_qpos'].mea)
         
         ### Update reward ###
         raise_reward = torch.tensor(self.raise_reward(obs), dtype=torch.float32)
-        if not raise_reward == 1:
-            raise_reward += self.torq_cost(action)
+        if not raise_reward == self.reward_for_raise:
+            if self.use_cost:
+                raise_reward -= self.torq_cost(action)
         self.mem_reward = raise_reward
         
         
+    
         
         
     def reward(self):
@@ -108,7 +118,7 @@ class Sim:
     
     def torq_cost(self, action):
         action_norm = np.linalg.norm(action)
-        cost = action_norm/(-7)
+        cost = self.cost_scale * action_norm
         print("Action cost:", cost)
         
         return cost
@@ -121,21 +131,9 @@ class Sim:
         print("\teef_pos - cube_pos == X:", eef_pos, "-", cube_pos, "=", np.linalg.norm((eef_pos - cube_pos)), "< 0.04?")
         delta = np.linalg.norm((eef_pos - cube_pos))
         if z_diff > .01 and delta < 0.04:
-            return 1
+            return self.reward_for_raise
         else:
             return -0.1
-            
-    
-    # SLOPPY REWARD FUNCTION
-    def make_reward(self, eef_pos, cube_pos):
-        distance = np.linalg.norm(eef_pos - cube_pos)
-
-        for grade in self.grades.keys():
-            if self.initial_distance / len(self.grades.keys()) * grade > distance and not self.grades[grade]:
-                self.grades[grade] = True
-                #prnt("Passed", self.initial_distance / len(grades.keys()) * grade, "with", distance, "Reward:", len(grades.keys()) - grade)
-                return (len(self.grades.keys()) - grade) * 1
-        return -1
         
     def take_photo(self, i):
         # For gathering data
