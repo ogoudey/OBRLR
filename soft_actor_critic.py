@@ -308,7 +308,9 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
             reward = sim.reward()
             next_state = sim.observe()
             state = next_state
+            e.append(state, action, reward, next_state)
             if reward.item() == sim.reward_for_raise:
+                pass
                 sim.reset()
                 rb.append(e)
                 rb.save(rb_save_name)
@@ -317,16 +319,17 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
                 #input("Proceed?")
                 break
             else:
-                e.append(state, action, reward, next_state)
+                pass
+                
             if reward.item() <= -1:
                 print("********** Arrived at very negative reward***********")
                 print(reward.item())
                 #input("Proceed?")
             
         sim.reset(has_renderer=False)
-        rb.append(e)
-    save_name = rb_save_name
-    rb.save(save_name)   
+        #rb.append(e)
+        #rb.save(rb_save_name)
+    rb.save(rb_save_name)   
 
 def collect_teleop_data(sim, rb, rb_save_name):
     try:
@@ -371,7 +374,8 @@ def collect_teleop_data(sim, rb, rb_save_name):
             
             print("State:", state, "\nAction:", action, "\nReward:", reward, "\nState':", next_state, "\n")         
             state = sim.observe()
-            if reward.item() == sim.reward_for_raise: # To reduce corrupt data, end the episode here
+            if reward.item() == sim.reward_for_raise: # To reduce corrupt data, end the episode here    
+                pass
                 sim.reset()
                 rb.append(e)
                 rb.save(rb_save_name)
