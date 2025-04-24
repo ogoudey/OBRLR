@@ -308,7 +308,7 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
             reward = sim.reward()
             next_state = sim.observe()
             state = next_state
-            if reward.item() == 1.0:
+            if reward.item() == sim.reward_for_raise:
                 sim.reset()
                 rb.append(e)
                 rb.save(rb_save_name)
@@ -316,12 +316,13 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
                 print(reward.item())
                 #input("Proceed?")
                 break
+            else:
+                e.append(state, action, reward, next_state)
             if reward.item() <= -1:
                 print("********** Arrived at very negative reward***********")
                 print(reward.item())
                 #input("Proceed?")
-            else:
-                e.append(state, action, reward, next_state)
+            
         sim.reset(has_renderer=False)
         rb.append(e)
     save_name = rb_save_name
