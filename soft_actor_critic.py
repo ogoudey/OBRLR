@@ -307,7 +307,6 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
             sim.act(action)
             reward = sim.reward()
             next_state = sim.observe()
-            e.append(state, action, reward, next_state)
             state = next_state
             if reward.item() == 1.0:
                 sim.reset()
@@ -321,6 +320,8 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
                 print("********** Arrived at very negative reward***********")
                 print(reward.item())
                 #input("Proceed?")
+            else:
+                e.append(state, action, reward, next_state)
         sim.reset(has_renderer=False)
         rb.append(e)
     save_name = rb_save_name
@@ -366,14 +367,16 @@ def collect_teleop_data(sim, rb, rb_save_name):
             sim.act(action)
             reward = sim.reward()   
             next_state = sim.observe()
-            e.append(state, action, reward, next_state)
+            
             print("State:", state, "\nAction:", action, "\nReward:", reward, "\nState':", next_state, "\n")         
             state = sim.observe()
-            if reward.item() == 1.0: # To reduce corrupt data, end the episode here
+            if reward.item() == sim.reward_for_raise: # To reduce corrupt data, end the episode here
                 sim.reset()
                 rb.append(e)
                 rb.save(rb_save_name)
                 break
+            else:
+                e.append(state, action, reward, next_state)
         
     except KeyboardInterrupt:
         sim.reset()
@@ -398,7 +401,7 @@ def test(sim, num_episodes=10, render=True):
             state = sim.observe()
             reward = sim.reward()
             print("\nReward", reward,"\n")
-            if reward.item() == 1.0:
+            if reward.item() == sim.reward_for_raise:
                 time.sleep(2)
                 successes += 1
                 break
