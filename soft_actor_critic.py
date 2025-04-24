@@ -154,10 +154,6 @@ trained_policy = None
 trained_qnetwork = None
 
 def train(sim, params, args):
-    _policy_losses_over_time = []
-    _q_losses_over_time = []
-    left_margin = 0
-    
     if not args.pi:
         policy = PolicyNetwork()
     else:
@@ -226,9 +222,6 @@ def train(sim, params, args):
                 state_actions = torch.cat((states, actions), dim=-1)
                 q1_current = critic1(state_actions)
                 q2_current = critic2(state_actions)
-
-
-                
                            
                 with torch.no_grad():
                     next_actions, next_log_probs = policy.sample(next_states)
@@ -236,10 +229,9 @@ def train(sim, params, args):
                     q1_next = qnetwork1(next_state_actions)
                     q2_next = qnetwork2(next_state_actions)
                     min_q_next = torch.min(q1_next, q2_next)
-                    raw_target      = rewards + gamma * (min_q_next - (alpha * next_log_probs))
-                        # clamp the change around your reward scale
+                    raw_target = rewards + gamma * (min_q_next - (alpha * next_log_probs))
+                    # clamp the change around the reward scale
                     target_q = torch.clamp(raw_target, -1.0, 1.0)
-
                     
                 print("\nQ-next:", min_q_next.mean(), "+/-", min_q_next.std().item())
                 print("Log_prob:", next_log_probs.mean(), "+/-", next_log_probs.std().item())
@@ -288,36 +280,15 @@ def train(sim, params, args):
                 torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
                 policy_optimizer.step()
                 
-                
-                
-
-                
-                
-                
-                
-            #
-            #_q_losses_over_time.append(q_loss.detach().numpy())
-            #_policy_losses_over_time.append(policy_loss.detach().numpy())
-            # Per iteration plotting
-            #
-            #avg_succ_rts.append(test(sim, num_episodes=10, render=False))
-        """
-        plt.plot(range(0, num_iterations + left_margin), _policy_losses_over_time, label="Policy")
-        plt.plot(range(0, num_iterations + left_margin), _q_losses_over_time, label="Q-Network")
-        plt.legend()
-        plt.title("lr policy " + str(params['policy_lr']) + ", lr q " + str(params['q_lr']) + " alpha " + str(params['alpha']))
-        plt.show()
-        """
-        
         global trained_policy
         trained_policy = policy
-        safe_save_model(trained_policy, params["policy_save_name"] +".pt", save_state_dict=True)
+        safe_save_model(trained_policy, params["configuration_name"], "pi", save_state_dict=True)
         global trained_critic1
         trained_critic1 = critic1
-        safe_save_model(trained_critic1, params["critic1_save_name"] +".pt", save_state_dict=True)
+        safe_save_model(trained_critic1, params["configuration_name"], "Q1", save_state_dict=True)
         global trained_critic2
         trained_critic2 = critic2
-        safe_save_model(trained_critic2, params["critic2_save_name"] +".pt", save_state_dict=True)
+        safe_save_model(trained_critic2, params["configuration_name"], "Q2", save_state_dict=True)
         
         inp = input("#/n: ")
         while not inp == "n":
@@ -328,10 +299,7 @@ def train(sim, params, args):
             except ValueError:
                 inp = input("#/n: ")
         if inp == "n":
-            break
-    #print(num_iterations + left_margin, avg_succ_rts)
-    #plt.plot(range(0, num_iterations + left_margin), avg_succ_rts)
-    #plt.show()      
+            break     
    
 def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, rb_save_name):
     for action_episode in tqdm(range(0, num_action_episodes), position=1, leave=False):
@@ -340,8 +308,6 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
         for step in range(0, len_episode):
             action = policy.sample(state)[0].detach().numpy()
             sim.act(action)
-
-
             reward = sim.reward()
             next_state = sim.observe()
             e.append(state, action, reward, next_state)
@@ -366,7 +332,6 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
 def collect_teleop_data(sim, rb, rb_save_name):
     try:
         speed = 0.1
-        
         sim.reset(has_renderer=True)
         e = Episode()
         state = sim.observe()
@@ -390,14 +355,12 @@ def collect_teleop_data(sim, rb, rb_save_name):
             elif trigger == "p":
                 sim.take_photo(int(random.random()*100))
             else:
-                
                 print("Assigning speed!")
                 try:
                     speed = float(trigger)
                 except ValueError:
                     print("OOPS!")
                     continue
-
             sim.act(action)
             reward = sim.reward()   
             next_state = sim.observe()
@@ -462,7 +425,7 @@ def load_saved_qnetwork(qnetwork_path):
     trained_qnetwork.load_state_dict(torch.load(qnetwork_path))
     return trained_qnetwork
 
-def safe_save_model(model, filename, save_state_dict=True):
+def safe_save_model(model, configuration_name, model_type, save_state_dict=True):
     """
     Safely save a PyTorch model or its state_dict to a file using an atomic write.
     
@@ -476,7 +439,7 @@ def safe_save_model(model, filename, save_state_dict=True):
     data_to_save = model.state_dict() if save_state_dict else model
 
     # Get the target directory from filename
-    target_dir = os.path.dirname(os.path.abspath(filename))
+    target_dir = os.path.dirname(os.path.abspath("configurations/" + configuration_name + "/" + model_type + ".pt"))
     
     # Ensure the target directory exists
     os.makedirs(target_dir, exist_ok=True)

@@ -27,9 +27,10 @@ if __name__ == "__main__":
             params = yaml.safe_load(f)
         print("Loaded parameters")
     except Exception:
-        print(args.params, "no good. Loading default parameters...")
-        with open("parameters/params.yaml", "r") as f:
-            params = yaml.safe_load(f)
+        print(args.params, "is malformated.\n\tPlease give a correct path to a well-formed YAML file.")
+        
+    
+    print(params["other_parameters"]["description"])
     
     if args.real:
         from real import real # irl robot stuff
