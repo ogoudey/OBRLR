@@ -162,15 +162,15 @@ def train(sim, params, args):
     if not args.pi:
         policy = PolicyNetwork(params['networks']['policy'])
     else:
-        policy = load_saved_policy(args.pi)
+        policy = load_saved_policy(args.pi, params)
     if not args.q1:
         critic1 = QNetwork(params['networks']['q'])
     else:
-        critic1 = load_saved_qnetwork(args.q1)
+        critic1 = load_saved_qnetwork(args.q1, params)
     if not args.q2:
         critic2 = QNetwork(params['networks']['q'])
     else:
-        critic2 = load_saved_qnetwork(args.q2)
+        critic2 = load_saved_qnetwork(args.q2, params)
     
     if not args.rb:
         rb = ReplayBuffer()
@@ -328,7 +328,7 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
                 #input("Proceed?")
             
         sim.reset(has_renderer=False)
-        #rb.append(e)
+        rb.append(e)
         #rb.save(rb_save_name)
     rb.save(rb_save_name)   
 
@@ -415,14 +415,14 @@ def test_single_SAR(sim):
     
     action, log_prob = policy.sample(state)
 
-def load_saved_policy(policy_path):
-    trained_policy = PolicyNetwork()
+def load_saved_policy(policy_path, params):
+    trained_policy = PolicyNetwork(params['networks']['policy'])
     trained_policy.load_state_dict(torch.load(policy_path))
 
     return trained_policy
     
-def load_saved_qnetwork(qnetwork_path):
-    trained_qnetwork = QNetwork()
+def load_saved_qnetwork(qnetwork_path, params):
+    trained_qnetwork = QNetwork(params['networks']['q'])
     trained_qnetwork.load_state_dict(torch.load(qnetwork_path))
     return trained_qnetwork
 

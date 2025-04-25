@@ -28,7 +28,7 @@ class Sim:
         self.has_renderer = False
         
         # Vision
-        self.sim_vision = sim_vision.SimVision()
+        self.sim_vision = sim_vision.SimVision(use_sim_camera=False) # Change to turn simulated YOLO
         
         #
         
@@ -57,19 +57,23 @@ class Sim:
                 env_name="Lift",
                 robots="Kinova3",
                 has_renderer=self.has_renderer,
-                has_offscreen_renderer=True,
-                use_camera_obs=True,
                 horizon = 1000,
-                camera_heights=400,
-                camera_widths=400,
-                camera_names="sideview",
-                camera_depths=True
+                
             )
+        
         else:
             self.env.has_renderer=has_renderer
             self.has_renderer = has_renderer
             self.env.reset()
-
+        """
+                has_offscreen_renderer=True,
+                use_camera_obs=True,
+                
+                camera_heights=400,
+                camera_widths=400,
+                camera_names="sideview",
+                camera_depths=True
+        """
         
         # Initialize
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])

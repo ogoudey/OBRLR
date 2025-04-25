@@ -12,10 +12,11 @@ image_id = 0
 vision_model_path = 'vision/cube_eef_detector.pt'
 
 class SimVision:
-    def __init__(self):
+    def __init__(self, use_sim_camera=True):
         self.vision_model = torch.hub.load('ultralytics/yolov5', 'custom', path=vision_model_path, force_reload=True) # path is to the model originally in runs/expX/weights/
         self.cube_position, self.eef_position = None, None
         self.reset()
+        self.use_sim_camera = use_sim_camera
     
     def reset(self):
         cv2.destroyAllWindows()
@@ -24,41 +25,44 @@ class SimVision:
         #self.cap = cv2.VideoCapture(0)
             
     def detect(self, obs, sim, no_cap=True):
-        env_image = obs["sideview_image"]
-        env_depth = obs["sideview_depth"]
         
-        img = Image.fromarray(env_image, 'RGB')
-        ### CHANGE FOR IMAGE DATA COLLECTION ###
-        save_img_data = False
-        if save_img_data:
-            global image_id
-            image_id += 1
-            img_name = 'sideview'+str(image_id)+'.png'
-            img.save('data/Robosuite2/' + img_name)
-        ###         ###
-        result = self.vision_model(img)
-        
-        centers = self.box_centers(result)
-        #print("Centers:", centers)
-        if not no_cap:
-        
-            rendering = result.render()[0].copy()
+        if self.use_sim_camera:
+            env_image = obs["sideview_image"]
+            env_depth = obs["sideview_depth"]
+            img = Image.fromarray(env_image, 'RGB')
+            ### CHANGE FOR IMAGE DATA COLLECTION ###
+            save_img_data = False
+            if save_img_data:
+                global image_id
+                image_id += 1
+                img_name = 'sideview'+str(image_id)+'.png'
+                img.save('data/Robosuite2/' + img_name)
+            ###         ###
+            result = self.vision_model(img)
+            
+            centers = self.box_centers(result)
+            #print("Centers:", centers)
+            if not no_cap:
+            
+                rendering = result.render()[0].copy()
 
-            for label, (x,y) in centers.items():
-                cv2.circle(rendering, (int(x), int(y)), radius=5, color=(255,255,255))         
-                cv2.putText(
-                    rendering, label, (int(x) + 8, int(y) - 8),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, lineType=cv2.LINE_AA
-                )
-            cv2.circle(rendering, (0, 0), radius=5, color=(0,122,255))
-            cv2.circle(rendering, (399, 399), radius=5, color=(0,122,255))
-            cv2.imshow("Detections", rendering)
-            key = cv2.waitKey(5)  
-        else:
-            print("Showing detection?:", not no_cap)
-        
-        
-        _3d_positions = self.positions_from_labelled_pixels(centers, env_depth, sim)
+                for label, (x,y) in centers.items():
+                    cv2.circle(rendering, (int(x), int(y)), radius=5, color=(255,255,255))         
+                    cv2.putText(
+                        rendering, label, (int(x) + 8, int(y) - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, lineType=cv2.LINE_AA
+                    )
+                cv2.circle(rendering, (0, 0), radius=5, color=(0,122,255))
+                cv2.circle(rendering, (399, 399), radius=5, color=(0,122,255))
+                cv2.imshow("Detections", rendering)
+                key = cv2.waitKey(5)  
+            else:
+                print("Showing detection?:", not no_cap)
+            
+            
+            _3d_positions = self.positions_from_labelled_pixels(centers, env_depth, sim)
+        else: # no camera
+            _3d_positions = obs['cube_pos']
         distance = self.cube_position - obs['robot0_eef_pos']
         grasp = self.grasp_position(obs)
         pp = obs['robot0_eef_pos']
