@@ -32,14 +32,23 @@ if __name__ == "__main__":
     
     print(params["other_parameters"]["description"])
     
+    import soft_actor_critic as sac # includes policy network
+    
     if args.real:
         from real import real # irl robot stuff
         # unused in current algorithm
+        if not args.pi:
+            print("Please provide a policy.")
+            return 0
+        policy = sac.load_saved_policy(args.pi)
+        real.test_policy(policy)
+        
+        return 1
 
     import interface
     sim = interface.Sim(params["training_parameters"]["reward_function"])
     
-    import soft_actor_critic as sac # includes policy network
+    
     
 
     sac.train(sim, params["training_parameters"], args)
