@@ -6,6 +6,8 @@ from vision import sim_vision
 import torch
 from PIL import Image
 
+from scipy.spatial.transform import Rotation as R
+import math
 import matplotlib.pyplot as plt
 import time
 import random
@@ -63,30 +65,39 @@ class Sim:
         
           
     def reset(self, has_renderer=False, use_sim_camera=False):
+        print(self.env)
+        if not self.env:
+            print("Full reset!")
+            if use_sim_camera:
+                self.env = suite.make(
+                    env_name="Lift",
+                    robots="Kinova3",
+                    has_renderer=True,
+                    horizon = 2000,
+                    has_offscreen_renderer=True,
+                    use_camera_obs=True,
+                    camera_heights=400,
+                    camera_widths=400,
+                    camera_names="sideview",
+                    camera_depths=True
+                )
+            else:
+                self.env = suite.make(
+                    env_name="Lift",
+                    robots="Kinova3",
+                    has_renderer=has_renderer,
+                    horizon = 2000,
+                    has_offscreen_renderer=False,
+                    use_camera_obs=False,
+                )
+       
         
+        #desired_joint_positions = [math.pi, -math.pi/2, 0.0, 0.0, 0.0, -math.pi/2, 0]
+        desired_joint_positions = [math.pi, 0.0, 0.0, -math.pi/2, 0.0, -math.pi/2, 0]
+        # Set the joints manually
+        self.env.robots[0].set_robot_joint_positions(desired_joint_positions)
         
-        if use_sim_camera:
-            self.env = suite.make(
-                env_name="Lift",
-                robots="Kinova3",
-                has_renderer=False,
-                horizon = 2000,
-                has_offscreen_renderer=True,
-                use_camera_obs=True,
-                camera_heights=400,
-                camera_widths=400,
-                camera_names="sideview",
-                camera_depths=True
-            )
-        else:
-            self.env = suite.make(
-                env_name="Lift",
-                robots="Kinova3",
-                has_renderer=False,
-                horizon = 2000,
-                has_offscreen_renderer=False,
-                use_camera_obs=False,
-            )
+            
         """
                 has_offscreen_renderer=True,
                 use_camera_obs=True,
@@ -100,7 +111,7 @@ class Sim:
         # Initialize
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
         self.mem_reward = torch.tensor(self.raise_reward(obs), dtype=torch.float32)
-        detection = self.sim_vision.detect(obs, self.env.sim, no_cap= not has_renderer)
+        detection = self.sim_vision.detect(obs, self.env, no_cap= not has_renderer)
         self.state = detection
         
         self.sim_vision.reset()
@@ -120,7 +131,7 @@ class Sim:
         #print("Standardized action:", standardized_action)
         obs, _, _, _ = self.env.step(standardized_action)
         self.eef_pos = obs['robot0_eef_pos']
-        detection = self.sim_vision.detect(obs, self.env.sim, no_cap = not w_video)
+        detection = self.sim_vision.detect(obs, self.env, no_cap = not w_video)
         
         self.state = detection
         #print("State:", self.state)

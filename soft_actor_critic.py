@@ -389,6 +389,7 @@ def train(sim, params, args):
     gamma, alpha = params['algorithm']['gamma'], params['algorithm']['alpha']
     
     avg_succ_rts = []
+    sim.env = None
     while True:
     
         for iteration in tqdm(range(0, num_iterations), position=0):
