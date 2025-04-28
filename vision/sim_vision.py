@@ -20,8 +20,8 @@ class SimVision:
     
     def reset(self):
         cv2.destroyAllWindows()
-        self.cube_position = np.array([0.2913, 0.2629, 1.3597])
-        self.eef_position = np.array([0.2927, 0.30001, 1.2391])
+        self.cube_position = None
+        self.eef_position = None
         #self.cap = cv2.VideoCapture(0)
             
     def detect(self, obs, sim, no_cap=True):
@@ -57,21 +57,29 @@ class SimVision:
                 cv2.imshow("Detections", rendering)
                 key = cv2.waitKey(5)  
             else:
-                print("Showing detection?:", not no_cap)
+                #print("Showing detection?:", not no_cap)
+                pass
             
             
             _3d_positions = self.positions_from_labelled_pixels(centers, env_depth, sim)
         else: # no camera
             _3d_positions = obs['cube_pos']
-        distance = self.cube_position - obs['robot0_eef_pos']
+            
+        # show for teleop #
+        if not no_cap and self.use_sim_camera:
+            env_image = obs["sideview_image"]
+            img = Image.fromarray(env_image, 'RGB')     
+            cv2.imshow("Detections", img)
+            key = cv2.waitKey(5) 
+        distance = _3d_positions - obs['robot0_eef_pos']
         grasp = self.grasp_position(obs)
         pp = obs['robot0_eef_pos']
-        print(pp)
-        print(_3d_positions)
-        print(distance)
-        print(grasp)
+        #print(pp)
+        #print(_3d_positions)
+        #print(distance)
+        #print(grasp)
         np_array = np.concatenate((pp, _3d_positions, distance, grasp))
-        print("Detection:", np_array, "(length:", len(np_array), ")")
+        #print("Detection:", np_array, "(length:", len(np_array), ")")
         return torch.tensor(np_array, dtype=torch.float32)
     
     def grasp_position(self, obs):
@@ -120,14 +128,14 @@ class SimVision:
         if "cube" in labelled_pixel_dict.keys():    
             points_cube = cu.transform_from_pixels_to_world(np.array([labelled_pixel_dict["cube"]]), expanded_depth, camera_to_world_transform)
             if np.isnan(points_cube[0]).any() or np.any((points_cube[0] < -2) | (points_cube[0] > 2)): # for some reason sometimes theres all Nan in the tensor
-                print("Bad input in cube pos diverted:", points_cube[0])
+                #print("Bad input in cube pos diverted:", points_cube[0])
                 cube_pos = self.cube_position
             else:   
                 cube_pos = points_cube[0]                
             positions_array.extend(cube_pos)
             self.cube_position = cube_pos
-            print("Setting cube:", self.cube_position)
+            #print("Setting cube:", self.cube_position)
         else:
-            print("No cube:", self.cube_position)
+            #print("No cube:", self.cube_position)
             positions_array.extend(self.cube_position)
         return np.array(positions_array)

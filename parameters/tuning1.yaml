@@ -1,0 +1,31 @@
+other_parameters:
+    description: "The /tuning* parameters take the biggest replay buffer and make and train different neural networks parameters file."
+training_parameters:
+    replay_buffer: "raised_cost_w_backwards"
+    networks:
+        policy:
+            lr: 0.00003
+            hidden_layers:
+                l1: 256
+                l2: 256
+        q:
+            lr: 0.00003
+            hidden_layers:
+                l1: 256
+                l2: 256
+    algorithm:    
+        num_iterations: 200
+        human: False
+        len_episode: 100
+        num_action_episodes: 1
+        batch_size: 256
+        gamma: 0.99
+        alpha: 0.2
+        num_gradient_steps: 5000
+    reward_function:
+        cost: True
+        cost_scale: 0.142857
+        raise: 1
+        
+    configuration_save_name: "tuning1"
+    rb_save_name: "raised_cost_w_backwards"
