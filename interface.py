@@ -47,7 +47,12 @@ class Sim:
         if "testing" in params.keys():
             if bool(params["testing"]):
                 has_renderer = True
+                
+        
+        
         self.reset(has_renderer=has_renderer, use_sim_camera=use_sim_camera)
+        
+        
         
         self.use_cost = bool(reward_params["cost"])
         if self.use_cost:
@@ -58,11 +63,13 @@ class Sim:
         
           
     def reset(self, has_renderer=False, use_sim_camera=False):
+        
+        
         if use_sim_camera:
             self.env = suite.make(
                 env_name="Lift",
                 robots="Kinova3",
-                has_renderer=has_renderer,
+                has_renderer=False,
                 horizon = 2000,
                 has_offscreen_renderer=True,
                 use_camera_obs=True,
@@ -72,18 +79,7 @@ class Sim:
                 camera_depths=True
             )
         else:
-            if not self.env:
-                self.env = suite.make(
-                    env_name="Lift",
-                    robots="Kinova3",
-                    has_renderer=has_renderer,
-                    horizon = 2000,
-                    has_offscreen_renderer=True
-                )
-            else:
-                self.env.has_renderer=has_renderer
-                self.has_renderer = has_renderer
-                self.env.reset()
+            
         """
                 has_offscreen_renderer=True,
                 use_camera_obs=True,
@@ -116,7 +112,7 @@ class Sim:
         standardized_action = [action[0], action[1], action[2], 0, 0, 0, action[3]]
         #print("Standardized action:", standardized_action)
         obs, _, _, _ = self.env.step(standardized_action)
-        
+        self.eef_pos = obs['robot0_eef_pos']
         detection = self.sim_vision.detect(obs, self.env.sim, no_cap = not w_video)
         
         self.state = detection
@@ -166,14 +162,53 @@ class Sim:
 
 
 if __name__ == "__main__":
-    s = Sim()
-    s.has_renderer = True
-    s.reset()
+    env = suite.make(env_name="Lift",
+                robots="Kinova3",
+                has_renderer=True,
+                horizon = 2000,
+                has_offscreen_renderer=True,
+                use_camera_obs=True,
+                camera_heights=400,
+                camera_widths=400,
+                camera_names="sideview",
+                camera_depths=True)
+                
+    robot = env.robots[0]
+
+    print(robot._hand_pos['right'])
+    
+    
+    obs, _, _, _ = env.step([0,0,0,0,0,0,0])
+    state = robot._hand_pos['right']
+    
+    speed = 1
     while True:
-        action = np.array(json.loads(input("Action: ")))
-        obs, _, _, _ = s.env.step(action)
-        reward = torch.tensor(s.raise_reward(obs), dtype=torch.float32)
-        print(torch.tensor([reward]))
-        state = torch.tensor(np.concatenate((obs['robot0_eef_pos'], obs['cube_pos'])), dtype=torch.float32)
-        print(state)
+        action = np.array([0.0,0.0,0.0,0.0])
+        trigger = input("Button: ")
+        if trigger == "q":
+            action[0] = speed
+        elif trigger == "w":
+            action[1] = speed
+        elif trigger == "e":
+            action[2] = speed
+        elif trigger == "r":
+            action[3] = speed
+        elif trigger == "p":
+            state = robot._hand_pos['right']
+            break
+        else:
+            print("Assigning speed!")
+            try:
+                speed = float(trigger)
+            except ValueError:
+                print("OOPS!")
+                continue
+        standardized_action = [action[0], action[1], action[2], 0, 0, 0, action[3]]
+        obs, _, _, _ = env.step(standardized_action)
+        print(robot._hand_pos['right'])
+        state = robot._hand_pos['right']
+   
+        
+    # reset sim
+    # take 4000 photoes
     

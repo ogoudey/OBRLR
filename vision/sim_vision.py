@@ -23,6 +23,7 @@ class SimVision:
         self.cube_position = None
         self.eef_position = None
         #self.cap = cv2.VideoCapture(0)
+    
             
     def detect(self, obs, sim, no_cap=True):
         
@@ -71,9 +72,9 @@ class SimVision:
             img = Image.fromarray(env_image, 'RGB')     
             cv2.imshow("Detections", img)
             key = cv2.waitKey(5) 
-        distance = _3d_positions - obs['robot0_eef_pos']
+        distance = _3d_positions - sim.env.robots[0]._hand_pos['right']
         grasp = self.grasp_position(obs)
-        pp = obs['robot0_eef_pos']
+        pp = sim.env.robots[0]._hand_pos['right']
         #print(pp)
         #print(_3d_positions)
         #print(distance)
