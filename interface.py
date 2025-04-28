@@ -79,7 +79,13 @@ class Sim:
                 camera_depths=True
             )
         else:
-            
+            self.env = suite.make(
+                env_name="Lift",
+                robots="Kinova3",
+                has_renderer=False,
+                horizon = 2000,
+                has_offscreen_renderer=False
+            )
         """
                 has_offscreen_renderer=True,
                 use_camera_obs=True,
