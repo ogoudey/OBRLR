@@ -15,6 +15,7 @@ import time
 import numpy as np
 import pickle
 import copy
+import logging
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -156,11 +157,11 @@ trained_qnetwork = None
 
 
 # train method based on OpenAI's spinningup
-def train2(sim, params, args):
+def train2(sim, params, args, logger):
     ### plotting
     q_losses = []
     pi_losses = []
-    rewards_ = []
+    max_ep_rewards = []
     ###
     
     torch.set_num_threads(torch.get_num_threads()) # Needed?
@@ -198,29 +199,33 @@ def train2(sim, params, args):
     total_steps, len_episode = params['algorithm']['num_iterations'], params['algorithm']['len_episode']
     gamma, alpha = params['algorithm']['gamma'], params['algorithm']['alpha']
     
-    gradient_after = 1
-    gradient_every = 50
-    save_every = 10000
-    steps_taken = 0
+    gradient_after = params['algorithm']['gradient_after']
+    gradient_every = params['algorithm']['gradient_every']
+    save_every = params['algorithm']['save_every']
     
+    steps_taken = 0
     state = sim.observe()
-    print(state)
     e = Episode()
+    max_ep_reward = -99
     try: 
         for step in tqdm(range(0, total_steps), position=0):
+
             action = policy.sample(state)[0].detach().numpy()
             sim.act(action)
             reward = sim.reward()
+            max_ep_reward = max(max_ep_reward, reward)
             next_state = sim.observe()
             e.append(state, action, reward, next_state)
             state = next_state
             #print(step, end=", ")
+            
+
             if step % len_episode == 0:
                 rb.append(e)
                 e = Episode()
                 sim.reset()
                 state = sim.observe()
-            rewards_.append(reward)    
+                max_ep_rewards.append(max_ep_reward)    
                 
             if step > gradient_after and step % gradient_every == 0:
                 for grad in range(0, gradient_every):
@@ -229,11 +234,16 @@ def train2(sim, params, args):
                     actions = batch['actions']
                     rewards = batch['rewards']
                     next_states = batch['next_states']
-                    
+                    logger.info("_____Q Network Update {step}_____")
                     state_actions = torch.cat((states, actions), dim=-1)
                     q1_current = critic1(state_actions)
                     q2_current = critic2(state_actions)
-                               
+                    
+                    logger.info(f"Q1 {q1_current.detach().numpy().mean()}; Q2 {q2_current.detach().numpy().mean()}")   
+                    logger.info(f"Mean reward {rewards.detach().numpy().mean()}; 1 reward? {np.any(rewards.numpy() == 1)}")
+                    if np.any(rewards.numpy() == 1):
+                        print("YES!")
+                    
                     with torch.no_grad():
                         next_actions, next_log_probs = policy.sample(next_states)
                         next_state_actions = torch.cat((next_states, next_actions), dim=-1)
@@ -242,15 +252,14 @@ def train2(sim, params, args):
                         min_q_next = torch.min(q1_next, q2_next)
                         target_q = rewards + gamma * (min_q_next - (alpha * next_log_probs))
                         # clamp the change around the reward scale
-                        #target_q = torch.clamp(raw_target, -1.0, 1.0)
-                        
-                    #print("\nQ-next:", min_q_next.mean(), "+/-", min_q_next.std().item())
-                    #print("Log_prob:", next_log_probs.mean(), "+/-", next_log_probs.std().item())
-                    #print("Rewards:", rewards.mean(), "+/-", rewards.std().item())
+                        #target_q = torch.clamp(raw_target, -1.0, 1.0)   
+                    
+                    logger.info(f"Q1 next {q1_next.detach().numpy().mean()}; Q2 next {target_q.detach().numpy().mean()}") 
                     q1_loss = F.mse_loss(q1_current, target_q)
                     q2_loss = F.mse_loss(q2_current, target_q)
                     q_loss = q1_loss + q2_loss # Idea from Spinningup
-                    
+                    logger.info(f"Q1 Loss {q1_loss.detach().numpy().mean()}; Q2 Loss {q2_loss.detach().numpy().mean()}") 
+
                     # Here spinning up does loss_q = lossq1 + lossq2
                     
                     # Critic Backpropogation #
@@ -276,15 +285,17 @@ def train2(sim, params, args):
                     for param, target_param in zip(critic2.parameters(), qnetwork2.parameters()):
                         target_param.data.mul_(mix)
                         target_param.data.add_((1 - mix) * param.data)
-                    
+                    logger.info("_____Actor Update {step}_____")
                     # Actor update #
                     new_actions, log_probs = policy.sample(states)  
+                    logger.info(f"Action mean {new_actions.detach().numpy().mean()}; Log prob mean {log_probs.detach().numpy().mean()};")
                     new_state_actions = torch.cat((states, new_actions), dim=-1)
                     q1_val_new = critic1(new_state_actions)
                     q2_val_new = critic2(new_state_actions)
                     q_val_new = torch.min(q1_val_new, q2_val_new)
+                    logger.info(f"Q1 {q1_val_new.detach().numpy().mean()}; Q2 {q2_val_new.detach().numpy().mean()};")
                     policy_loss = (alpha * log_probs - q_val_new).mean()
-
+                    logger.info(f"Policy Loss {policy_loss.detach().numpy().mean()};")
                     policy_optimizer.zero_grad()
                     policy_loss.backward()
                     torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
@@ -320,9 +331,10 @@ def train2(sim, params, args):
         plt.plot(range(0, len(pi_losses)), pi_losses)
         plt.title("Policy-losses")
         plt.savefig("figures/policy_losses_"+params["configuration_save_name"]+".png")
-        plt.plot(range(0, len(rewards_)), rewards_)
-        plt.title("Rewards")
-        plt.savefig("figures/rewards_"+params["configuration_save_name"]+".png")
+        
+        plt.plot(range(0, len(max_ep_rewards)), max_ep_rewards)
+        plt.title("Max rewards / episode")
+        plt.savefig("figures/max_ep_rewards_"+params["configuration_save_name"]+".png")
     """
     # Optional interactive training...
     inp = input("#/n: ")
@@ -631,4 +643,30 @@ def safe_save_model(model, configuration_name, model_type, save_state_dict=True)
     
     # Atomically replace the target file with the temporary file.
     os.replace(temp_filename, filename)
-    #print(f"Model successfully saved to {filename}")    
+    #print(f"Model successfully saved to {filename}")  
+    
+def setup_logger(params, params_file_name):
+    if "configuration" in params.keys():
+        experiment_name = params["configuration"] + "2" + params["configuration_save_name"]
+    else:
+        experiment_name = params["configuration_save_name"]
+    logger = logging.getLogger(experiment_name)  
+    
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+            "[%(asctime)s] %(levelname)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S"
+        )
+    
+    log_path = "logs/" + experiment_name + ".logs"
+    fh = logging.FileHandler(log_path)
+    fh.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        "[%(asctime)s] %(levelname)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    fh.setFormatter(formatter)
+    logger.addHandler(fh)
+    return logger
+    
+    

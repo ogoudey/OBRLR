@@ -79,6 +79,26 @@ def move_vector(base, vector):
     
 
 
+def test_policy(policy):
+    done = True
+    while not done:
+        try:
+            # get state:
+            # eef_pos + detection + grasp
+            action, __ = policy.sample(state)
+            # move arm in with cartesian: action[3:] and gripper: action[3]
+        except KeyboardInterrupt:
+            base.Stop()
+            done = continu()
+    print("Done testing.")
+
+def continu()                
+    while True:
+        i = input("Proceed? (y/n)")
+        if i == "n":
+            return True
+        if i == "y":
+            return False
 
     
 def main():

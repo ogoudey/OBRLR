@@ -3,7 +3,7 @@ import argparse
 import yaml
 
 import logging
-logging.disable(logging.INFO)
+
 import warnings
 warnings.filterwarnings("ignore", category=FutureWarning)
 
@@ -30,16 +30,18 @@ if __name__ == "__main__":
     
     import soft_actor_critic as sac # includes policy network
     
+    logger = sac.setup_logger(params["training_parameters"], args.params)
+    
     if args.real:
         from real import real # irl robot stuff
         # unused in current algorithm
         if not args.pi:
             print("Please provide a policy.")
-            return 0
+            
         policy = sac.load_saved_policy(args.pi)
         real.test_policy(policy)
         
-        return 1
+        
 
     import interface
     sim = interface.Sim(params["training_parameters"])
@@ -47,7 +49,7 @@ if __name__ == "__main__":
     
     
     if "train2" in params["training_parameters"].keys():
-        sac.train2(sim, params["training_parameters"], args)
+        sac.train2(sim, params["training_parameters"], args, logger)
     else:
         sac.train(sim, params["training_parameters"], args)
     if "testing" in params["training_parameters"].keys():
