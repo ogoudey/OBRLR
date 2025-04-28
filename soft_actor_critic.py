@@ -160,7 +160,7 @@ def train2(sim, params, args):
     ### plotting
     q_losses = []
     pi_losses = []
-    rewards = []
+    rewards_ = []
     ###
     
     torch.set_num_threads(torch.get_num_threads()) # Needed?
@@ -220,7 +220,7 @@ def train2(sim, params, args):
                 e = Episode()
                 sim.reset()
                 state = sim.observe()
-            rewards.append(reward)    
+            rewards_.append(reward)    
                 
             if step > gradient_after and step % gradient_every == 0:
                 for grad in range(0, gradient_every):
@@ -320,7 +320,7 @@ def train2(sim, params, args):
         plt.plot(range(0, len(pi_losses)), pi_losses)
         plt.title("Policy-losses")
         plt.savefig("figures/policy_losses_"+params["configuration_save_name"]+".png")
-        plt.plot(range(0, len(rewards)), rewards)
+        plt.plot(range(0, len(rewards_)), rewards_)
         plt.title("Rewards")
         plt.savefig("figures/rewards_"+params["configuration_save_name"]+".png")
     """
