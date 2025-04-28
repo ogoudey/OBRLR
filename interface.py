@@ -84,7 +84,8 @@ class Sim:
                 robots="Kinova3",
                 has_renderer=False,
                 horizon = 2000,
-                has_offscreen_renderer=False
+                has_offscreen_renderer=False,
+                use_camera_obs=False,
             )
         """
                 has_offscreen_renderer=True,
@@ -158,14 +159,21 @@ class Sim:
         else:
             return -0.1
         
-    def take_photo(self, i):
+    def take_photo(self):
         # For gathering data
+        i = random.random()*1000
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
         img = Image.fromarray(obs["sideview_image"], 'RGB')
         img_name = 'sideview'+str(i)+'.png'
         #print("Photo-taking turned off.")
         img.save('vision/data/Robosuite3/Images' + img_name)
 
+def take_onboard_photo(obs):
+    i = random.random()*1000
+    eye = obs['robot0_eye_in_hand_image']
+    img = Image.fromarray(eye, 'RGB')    
+    img_name = 'sideview'+str(i)+'.png'    
+    img.save('vision/data/Robosuite4/Images' + img_name)    
 
 if __name__ == "__main__":
     env = suite.make(env_name="Lift",
@@ -174,20 +182,30 @@ if __name__ == "__main__":
                 horizon = 2000,
                 has_offscreen_renderer=True,
                 use_camera_obs=True,
-                camera_heights=400,
-                camera_widths=400,
-                camera_names="sideview",
-                camera_depths=True)
-                
-    robot = env.robots[0]
+                camera_heights=256,
+                camera_widths=256,
+                camera_names="robot0_eye_in_hand",
+                camera_depths=False)
 
-    print(robot._hand_pos['right'])
+    robot = env.robots[0]
+    
+    
     
     
     obs, _, _, _ = env.step([0,0,0,0,0,0,0])
+    print(obs.keys())
     state = robot._hand_pos['right']
     
-    speed = 1
+    speed = 5
+    k = 1
+    for i in range(0, 4000):
+        take_onboard_photo(obs)
+        action = np.array([(random.random()-0.5)/k,(random.random()-0.5)/k,(random.random()-0.5)/k,0.0,0.0,0.0,(random.random()-0.5)/10])
+        obs, _, _, _ = env.step(action)
+        if i % 500 == 0:
+            env.reset()
+        
+        
     while True:
         action = np.array([0.0,0.0,0.0,0.0])
         trigger = input("Button: ")
@@ -200,7 +218,7 @@ if __name__ == "__main__":
         elif trigger == "r":
             action[3] = speed
         elif trigger == "p":
-            state = robot._hand_pos['right']
+            state = take_photo()
             break
         else:
             print("Assigning speed!")
