@@ -13,17 +13,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     
     parser.add_argument('--params', type=str, required=False, help="Parameters file")
-    parser.add_argument('--pi', type=str, required=False, help="Pre-trained policy")
-    parser.add_argument('--q1', type=str, required=False, help="Pre-trained critic1")
-    parser.add_argument('--q2', type=str, required=False, help="Pre-trained critic2")
-    parser.add_argument('--rb', type=str, required=False, help="Existing replay buffer")
     parser.add_argument('--real', action='store_true')
     args = parser.parse_args()
     
     
     # Load parameters file
     try:
-        with open(args.params, "r") as f:
+        with open(args.params + '.yaml', "r") as f:
             params = yaml.safe_load(f)
         print("Loaded parameters")
     except Exception:
@@ -46,12 +42,14 @@ if __name__ == "__main__":
         return 1
 
     import interface
-    sim = interface.Sim(params["training_parameters"]["reward_function"])
+    sim = interface.Sim(params["training_parameters"])
     
     
     
-
-    sac.train(sim, params["training_parameters"], args)
-
-    sac.test(sim)
-    print("Done.")
+    if "train2" in params["training_parameters"].keys():
+        sac.train2(sim, params["training_parameters"], args)
+    else:
+        sac.train(sim, params["training_parameters"], args)
+    if "testing" in params["training_parameters"].keys():
+        sac.test(sim)
+    print("python done.")

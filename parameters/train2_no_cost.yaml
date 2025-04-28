@@ -1,0 +1,29 @@
+other_parameters:
+    description: "A different styled parameters file to go into the train2 (Spinning-up style) algorithm"
+training_parameters:
+    train2: True
+    networks:
+        policy:
+            lr: 0.003
+            hidden_layers:
+                l1: 256
+                l2: 256
+        q:
+            lr: 0.003
+            hidden_layers:
+                l1: 256
+                l2: 256
+    algorithm:    
+        num_iterations: 400000
+        human: False
+        len_episode: 2
+        batch_size: 1
+        gamma: 0.99
+        alpha: 0.2
+    reward_function:
+        cost: False
+        cost_scale: 0.142857
+        raise: 1
+        
+    configuration_save_name: "train2_no_cost"
+    rb_save_name: "train2_no_cost"
