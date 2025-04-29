@@ -93,31 +93,21 @@ class Sim:
                 )
        
         
-        #desired_joint_positions = [math.pi, -math.pi/2, 0.0, 0.0, 0.0, -math.pi/2, 0]
+        # Set starting joints (a bad starting position after all?)
         desired_joint_positions = [math.pi, 0.0, 0.0, -math.pi/2, 0.0, -math.pi/2, 0]
-        # Set the joints manually
         self.env.robots[0].set_robot_joint_positions(desired_joint_positions)
         
-            
-        """
-                has_offscreen_renderer=True,
-                use_camera_obs=True,
-                
-                camera_heights=400,
-                camera_widths=400,
-                camera_names="sideview",
-                camera_depths=True
-        """
         
-        # Initialize
+        # Take initial step to get obs
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
         self.mem_reward = torch.tensor(self.raise_reward(obs), dtype=torch.float32)
+        # send obs, etc. to sim_vision for detection. kinda sloppy, we get positions in multiple places
         detection = self.sim_vision.detect(obs, self.env, no_cap= not has_renderer)
         self.state = detection
         
         self.sim_vision.reset()
         
-        # FOR CUBE Z        
+        # FOR CUBE Z (for reward)    
         self.initial_cube_z = obs['cube_pos'][2]
         
 
@@ -140,26 +130,21 @@ class Sim:
         detection = self.sim_vision.detect(obs, self.env, no_cap = not w_video)
         
         self.state = detection
-        #print("State:", self.state)
-        #print("Actual:", obs['robot0_eef_pos'] + obs['cube_pos'] + obs['robot0_gripper_qpos'].mea)
         
         ### Update reward ###
         raise_reward = torch.tensor(self.raise_reward(obs), dtype=torch.float32)
+        # cost (if applicable)
         if not raise_reward == self.reward_for_raise:
             if self.use_cost:
                 raise_reward -= self.torq_cost(action)
+        # stored for access with Sim.reward()
         self.mem_reward = raise_reward
         
         ## Done conditions ##
         if raise_reward == 1:
             self.done = 1
         else:
-            self.done = 0
-        
-        
-    
-    def done(self):
-        return self.done        
+            self.done = 0      
         
     def reward(self):
         return self.mem_reward
@@ -192,6 +177,7 @@ class Sim:
         #print("Photo-taking turned off.")
         img.save('vision/data/Robosuite3/Images' + img_name)
 
+# helper function for taking sim photos
 def take_onboard_photo(obs):
     i = random.random()*1000
     eye = obs['robot0_eye_in_hand_image']
@@ -199,6 +185,7 @@ def take_onboard_photo(obs):
     img_name = 'sideview'+str(i)+'.png'    
     img.save('vision/data/Robosuite4/Images' + img_name)    
 
+# main takes sim photos and does teleop to expose things
 if __name__ == "__main__":
     env = suite.make(env_name="Lift",
                 robots="Kinova3",
