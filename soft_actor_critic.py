@@ -36,10 +36,11 @@ class ReplayBuffer:
         
         # Build the batch dictionary
         batch = {
-            "states": torch.stack([torch.tensor(step.state, dtype=torch.float32) for step in batch_steps]),
+            "states": torch.stack([torch.tensor(step.state.state, dtype=torch.float32) for step in batch_steps]),
             "actions": torch.stack([torch.tensor(step.action, dtype=torch.float32) for step in batch_steps]),
             "rewards": torch.stack([torch.tensor(step.reward, dtype=torch.float32) for step in batch_steps]),
-            "next_states": torch.stack([torch.tensor(step.next_state, dtype=torch.float32) for step in batch_steps])
+            "next_states": torch.stack([torch.tensor(step.next_state, dtype=torch.float32) for step in batch_steps]),
+            "done": torch.stack([torch.tensor(step.done, dtype=torch.float32) for step in batch_steps]),
         }
         assert not torch.isnan(batch["states"]).any()
         assert not torch.isnan(batch["actions"]).any()
@@ -71,17 +72,30 @@ class Episode:
     def __init__(self):
         self.steps = []
     
-    def append(self, state, action, reward, next_state):
+    def append(self, state, action, reward, next_state, done):
         #print(state, action, reward, next_state)
-        step = Step(state, action, reward, next_state)
+        step = Step(state, action, reward, next_state, done)
         self.steps.append(step)
     
 class Step:
-    def __init__(self, state, action, reward, next_state):
-        self.state = state.detach().numpy()
+    def __init__(self, state, action, reward, next_state, done):
+
+        if type(state) == Hindsight:
+
+            self.state = state
+        else:   # This is not HER -- i.e. hindsight w/o content
+            self.state = Hindsight(state)
         self.action = action
         self.reward = reward.detach().numpy()
         self.next_state = next_state.detach().numpy()
+        self.done = done
+
+class Hindsight:
+    def __init__(self, state, pos=None, goal=None):
+        self.state = torch.tensor(state, dtype=torch.float32)
+        self.actual = pos
+        self.desired = goal
+        
 
 class QNetwork(nn.Module):
     def __init__(self, params):
@@ -132,7 +146,10 @@ class PolicyNetwork(nn.Module):
         return mean, std
 
     def sample(self, state):
-        mean, std = self.forward(state)
+        if type(state) == Hindsight:    # a Hindsight state
+            mean, std = self.forward(state.state)
+        else:
+            mean, std = self.forward(state)
         #print("Means:", mean, "\nSTD:", std)
         normal = torch.distributions.Normal(mean, std)
         dist = torch.distributions.TransformedDistribution(normal, torch.distributions.TanhTransform(cache_size=1))
@@ -202,30 +219,65 @@ def train2(sim, params, args, logger):
     gradient_after = params['algorithm']['gradient_after']
     gradient_every = params['algorithm']['gradient_every']
     save_every = params['algorithm']['save_every']
+    full_sim_reset_every = 50000
+    HER = False
+    
+    if "HER" in params.keys():
+        if params["HER"]:
+            HER = True
+            HER_distance_reward_threshold = 0.05
+    
     
     steps_taken = 0
     state = sim.observe()
     e = Episode()
     max_ep_reward = -99
+    
     try: 
-        for step in tqdm(range(0, total_steps), position=0):
-
+        for step in tqdm(range(1, total_steps), position=0):
+            if HER:
+                actual = sim.eef_pos
+                goal = sim.cube_pos
+                state = Hindsight(state, actual, goal)
             action = policy.sample(state)[0].detach().numpy()
             sim.act(action)
             reward = sim.reward()
             max_ep_reward = max(max_ep_reward, reward)
             next_state = sim.observe()
-            e.append(state, action, reward, next_state)
+            done = sim.done
+            e.append(state, action, reward, next_state, done)
             state = next_state
-            #print(step, end=", ")
+
             
 
-            if step % len_episode == 0:
+            if step % len_episode == 0 or done == 1:
                 rb.append(e)
-                e = Episode()
+                max_ep_rewards.append(max_ep_reward)
+                if HER:
+                    logger.info(f"__HER Sampling__")
+                    he = Episode()
+                    for t in range(0, len_episode):
+
+                        achieved = random.choice(range(t, len_episode))
+
+                        achieved_goal = e.steps[achieved].state.actual
+                        distance =  np.linalg.norm(e.steps[t].state.actual - achieved_goal)
+                        logger.info(f"Future {achieved_goal}; Current actual {e.steps[t].state.actual}; Distance {distance}")
+                        if distance < HER_distance_reward_threshold:
+                            HER_reward = 1
+                        else:
+                            HER_reward = -0.01
+                        H_state = copy.deepcopy(e.steps[t].state)
+                        H_state.goal = achieved_goal
+                        H_next_state = copy.deepcopy(e.steps[t].next_state)
+                        he.append(H_state, e.steps[t].action, torch.tensor(HER_reward, dtype=torch.float32), torch.tensor(H_next_state, dtype=torch.float32), e.steps[t].done)
+                sim.env._step_counter = 0
+                rb.append(he)
                 sim.reset()
                 state = sim.observe()
-                max_ep_rewards.append(max_ep_reward)    
+                if step % full_sim_reset_every == 0:
+                    sim.env = None
+                    sim.reset()
                 
             if step > gradient_after and step % gradient_every == 0:
                 for grad in range(0, gradient_every):
@@ -234,6 +286,7 @@ def train2(sim, params, args, logger):
                     actions = batch['actions']
                     rewards = batch['rewards']
                     next_states = batch['next_states']
+                    done = batch['done']
                     logger.info("_____Q Network Update {step}_____")
                     state_actions = torch.cat((states, actions), dim=-1)
                     q1_current = critic1(state_actions)
@@ -241,8 +294,7 @@ def train2(sim, params, args, logger):
                     
                     logger.info(f"Q1 {q1_current.detach().numpy().mean()}; Q2 {q2_current.detach().numpy().mean()}")   
                     logger.info(f"Mean reward {rewards.detach().numpy().mean()}; 1 reward? {np.any(rewards.numpy() == 1)}")
-                    if np.any(rewards.numpy() == 1):
-                        print("YES!")
+                    
                     
                     with torch.no_grad():
                         next_actions, next_log_probs = policy.sample(next_states)
@@ -250,7 +302,7 @@ def train2(sim, params, args, logger):
                         q1_next = qnetwork1(next_state_actions)
                         q2_next = qnetwork2(next_state_actions)
                         min_q_next = torch.min(q1_next, q2_next)
-                        target_q = rewards + gamma * (min_q_next - (alpha * next_log_probs))
+                        target_q = rewards + gamma * (1 - done) * (min_q_next - (alpha * next_log_probs))
                         # clamp the change around the reward scale
                         #target_q = torch.clamp(raw_target, -1.0, 1.0)   
                     
@@ -541,7 +593,7 @@ def collect_teleop_data(sim, rb, rb_save_name):
         e = Episode()
         state = sim.observe()
         while True:
-            
+            print(sim.eef_pos, sim.cube_pos)
             action = np.array([0.0,0.0,0.0,0.0])
             trigger = input("Button: ")
             if trigger == "q":
@@ -564,7 +616,7 @@ def collect_teleop_data(sim, rb, rb_save_name):
             sim.act(action, w_video=True)
             reward = sim.reward()   
             next_state = sim.observe()
-            e.append(state, action, reward, next_state)
+            e.append(state, action, reward, next_state, 0)
             print("State:", state, "\nAction:", action, "\nReward:", reward, "\nState':", next_state, "\n")         
             state = next_state
             

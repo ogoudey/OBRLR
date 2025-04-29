@@ -27,7 +27,8 @@ class Sim:
     def __init__(self, params):
     
         reward_params = params["reward_function"]
-        self.env, self.mem_reward, self.state = None, None, None
+        self.env, self.mem_reward, self.state, self.done = None, None, None, 0
+        self.eef_pos, self.cube_pos = np.array([-math.inf, -math.inf, -math.inf]), np.array([0,0,0])
         # Initialize (reset)
         self.has_renderer = False
         
@@ -65,7 +66,7 @@ class Sim:
         
           
     def reset(self, has_renderer=False, use_sim_camera=False):
-        print(self.env)
+
         if not self.env:
             print("Full reset!")
             if use_sim_camera:
@@ -73,7 +74,7 @@ class Sim:
                     env_name="Lift",
                     robots="Kinova3",
                     has_renderer=True,
-                    horizon = 2000,
+                    horizon = 1000000,
                     has_offscreen_renderer=True,
                     use_camera_obs=True,
                     camera_heights=400,
@@ -86,7 +87,7 @@ class Sim:
                     env_name="Lift",
                     robots="Kinova3",
                     has_renderer=has_renderer,
-                    horizon = 2000,
+                    horizon = 1000000,
                     has_offscreen_renderer=False,
                     use_camera_obs=False,
                 )
@@ -130,7 +131,12 @@ class Sim:
         standardized_action = [action[0], action[1], action[2], 0, 0, 0, action[3]]
         #print("Standardized action:", standardized_action)
         obs, _, _, _ = self.env.step(standardized_action)
-        self.eef_pos = obs['robot0_eef_pos']
+        
+        site_name = self.env.robots[0].gripper['right'].important_sites["grip_site"]
+        eef_site_id = self.env.sim.model.site_name2id(site_name)
+        self.eef_pos = self.env.sim.data.site_xpos[eef_site_id]
+
+        self.cube_pos = obs['cube_pos']
         detection = self.sim_vision.detect(obs, self.env, no_cap = not w_video)
         
         self.state = detection
@@ -144,9 +150,16 @@ class Sim:
                 raise_reward -= self.torq_cost(action)
         self.mem_reward = raise_reward
         
+        ## Done conditions ##
+        if raise_reward == 1:
+            self.done = 1
+        else:
+            self.done = 0
+        
         
     
-        
+    def done(self):
+        return self.done        
         
     def reward(self):
         return self.mem_reward
