@@ -95,7 +95,7 @@ class Sim:
        
         
         # Set starting joints (a bad starting position after all?)
-        desired_joint_positions = [math.pi, 0.0, 0.0, -math.pi/2, 0.0, -math.pi/2, 0]
+        desired_joint_positions = [0.0, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
         self.env.robots[0].set_robot_joint_positions(desired_joint_positions)
         
         
@@ -229,14 +229,9 @@ if __name__ == "__main__":
     
     speed = 5
     k = 1
-    for i in range(0, 4000):
-        take_onboard_photo(obs)
-        action = np.array([(random.random()-0.5)/k,(random.random()-0.5)/k,(random.random()-0.5)/k,0.0,0.0,0.0,(random.random()-0.5)/10])
-        obs, _, _, _ = env.step(action)
-        if i % 500 == 0:
-            env.reset()
+    
         
-        
+    # Should we ever reset the environment?
     while True:
         action = np.array([0.0,0.0,0.0,0.0])
         trigger = input("Button: ")
@@ -249,8 +244,15 @@ if __name__ == "__main__":
         elif trigger == "r":
             action[3] = speed
         elif trigger == "p":
-            state = take_photo()
-            break
+            num_photos = int(input("# photos to take"))
+            for i in tqdm(range(0, num_photos)):
+                take_onboard_photo(obs)
+                action = np.array([(random.random()-0.5)/k,(random.random()-0.5)/k,(random.random()-0.5)/k,0.0,0.0,0.0,(random.random()-0.5)/10])
+                obs, _, _, _ = env.step(action)
+                
+                
+                #state = take_photo()
+                    
         else:
             print("Assigning speed!")
             try:
