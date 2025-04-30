@@ -181,6 +181,12 @@ def train2(sim, params, args, logger):
     max_ep_rewards = []
     q1s = []
     q2s = []
+    stds = []
+    action_magnitudes = []
+    q1s_mean = []
+    q1s_max = []
+    q1s_min = []
+    q1s_std = []
     ###
     
     torch.set_num_threads(torch.get_num_threads()) # Needed?
@@ -241,8 +247,14 @@ def train2(sim, params, args, logger):
                 actual = sim.eef_pos
                 goal = sim.cube_pos
                 state = Hindsight(state, actual, goal)
-            action = policy.sample(state)[0].detach().numpy()
+            action_, std = policy.sample(state)
+            stds.append(std.detach().numpy())
+            action = action_.detach().numpy()
+            logger.info(f"____Taking action {step}___")
             sim.act(action)
+            logger.info(f"Standard deviation {std}")
+            action_magnitudes.append(np.linalg.norm(action))
+            logger.info(f"Action {action}; Magnitude {np.linalg.norm(action)}")
             reward = sim.reward()
             max_ep_reward = max(max_ep_reward, reward)
             next_state = sim.observe()
@@ -255,6 +267,7 @@ def train2(sim, params, args, logger):
             if step % len_episode == 0 or done == 1:
                 rb.append(e)
                 max_ep_rewards.append(max_ep_reward)
+                max_ep_reward = -99
                 if HER:
                     logger.info(f"__HER Sampling {step}__")
                     he = Episode()
@@ -295,8 +308,15 @@ def train2(sim, params, args, logger):
                     state_actions = torch.cat((states, actions), dim=-1)
                     q1_current = critic1(state_actions)
                     q2_current = critic2(state_actions)
-                    q1s.append(q1_current) # for plotting
-                    q2s.append(q2_current)
+                    q1s.append(q1_current.mean().item()) # for plotting
+                    q2s.append(q2_current.mean().item())
+                    
+                    plottable = q1_current.detach().cpu().numpy()  # shape (batch_size, 1)
+                    q1s_mean.append(plottable.mean())
+                    q1s_max.append(plottable.max())
+                    q1s_min.append(plottable.min())
+                    q1s_std.append(plottable.std())
+
                     logger.info(f"Q1 {q1_current.detach().numpy().mean()}; Q2 {q2_current.detach().numpy().mean()}")   
                     logger.info(f"Mean reward {rewards.detach().numpy().mean()}; 1 reward? {np.any(rewards.numpy() == 1)}")
                     
@@ -381,32 +401,49 @@ def train2(sim, params, args, logger):
             steps_taken += 1
             #print("Replay buffer was saved to", params["rb_save_name"])
     except KeyboardInterrupt:
-        print("Exiting...")
-        plt.figure() 
-        plt.plot(range(0, len(q_losses)), q_losses)
-        plt.title("Q-losses")
-        plt.savefig("figures/qlosses_"+params["configuration_save_name"]+".png")                
-        plt.figure() 
-        plt.plot(range(0, len(pi_losses)), pi_losses)
-        plt.title("Policy-losses")
-        plt.savefig("figures/policy_losses_"+params["configuration_save_name"]+".png")
-        plt.figure()         
-        plt.plot(range(0, len(max_ep_rewards)), max_ep_rewards)
-        plt.title("Max rewards / episode")
-        plt.savefig("figures/max_ep_rewards_"+params["configuration_save_name"]+".png")
-        return policy
+       print("Exiting")
+    plt.figure() 
+    plt.plot(range(0, len(q1s)), q1s, label="Q1")
+    plt.plot(range(0, len(q2s)), q2s, label="Q2")
+    plt.title("Q values")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_qs.png")                
     plt.figure() 
     plt.plot(range(0, len(q_losses)), q_losses)
     plt.title("Q-losses")
-    plt.savefig("figures/qlosses_"+params["configuration_save_name"]+".png")                
+    plt.savefig("figures/"+params["configuration_save_name"]+"_qlosses.png")                
     plt.figure() 
     plt.plot(range(0, len(pi_losses)), pi_losses)
     plt.title("Policy-losses")
-    plt.savefig("figures/policy_losses_"+params["configuration_save_name"]+".png")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_policy_losses.png")
     plt.figure()         
     plt.plot(range(0, len(max_ep_rewards)), max_ep_rewards)
     plt.title("Max rewards / episode")
-    plt.savefig("figures/max_ep_rewards_"+params["configuration_save_name"]+".png")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_max_ep_rewards.png")
+    plt.figure()         
+    plt.plot(range(0, len(stds)), stds)
+    plt.title("Policy entropy")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_stds.png")
+    plt.figure()         
+    plt.plot(range(0, len(action_magnitudes)), action_magnitudes)
+    plt.title("Action magnitudes")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_action_magnitudes.png")
+    plt.figure()         
+    plt.plot(range(0, len(q1s_mean)), q1s_mean)
+    plt.title("Q1 mean")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_q1_mean.png")
+    q1s_mean = []
+    plt.figure()         
+    plt.plot(range(0, len(q1s_max)), q1s_max)
+    plt.title("Q1 max")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_q1s_max.png")
+    plt.figure()         
+    plt.plot(range(0, len(q1s_min)), q1s_min)
+    plt.title("Q1 min")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_q1s_min.png")
+    plt.figure()         
+    plt.plot(range(0, len(q1s_std)), q1s_std)
+    plt.title("Q1 standard deviation")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_q1s_std.png")
     return policy
     
 
@@ -722,6 +759,10 @@ def setup_logger(params, params_file_name):
         )
     
     log_path = "logs/" + experiment_name + ".logs"
+    
+    log_dir = os.path.dirname(log_path)
+    os.makedirs(log_dir, exist_ok=True)
+    
     fh = logging.FileHandler(log_path)
     fh.setLevel(logging.INFO)
     formatter = logging.Formatter(

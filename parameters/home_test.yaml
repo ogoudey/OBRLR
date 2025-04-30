@@ -1,0 +1,35 @@
+other_parameters:
+    description: "This is the parameters file used for testing HOME configuration."
+training_parameters:
+    configuration: "home"
+    train2: True
+    testing: True
+    networks:
+        policy:
+            lr: 0.003
+            hidden_layers:
+                l1: 256
+                l2: 256
+        q:
+            lr: 0.003
+            hidden_layers:
+                l1: 256
+                l2: 256
+    algorithm:    
+        algorithm:    
+        num_iterations: 0
+        human: False
+        len_episode: 500
+        batch_size: 256
+        gamma: 0.99
+        alpha: 0.2
+        gradient_after: 1000
+        gradient_every: 50
+        save_every: 10000
+    reward_function:
+        cost: True
+        cost_scale: 0.00142857
+        raise: 1
+        
+    configuration_save_name: "none"
+    rb_save_name: "dump"
