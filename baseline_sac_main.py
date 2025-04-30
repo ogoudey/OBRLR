@@ -31,5 +31,6 @@ if __name__ == "__main__":
     # Train sac with her using the loaded parms
     import baseline3_sac
     training_params = params.get("training_parameters", params)
-    model = baseline3_sac.train(
-        sim, training_params, args)
+    print("Training parameters: ", training_params)
+    model = baseline3_sac.train_sac(
+        sim, params["training_parameters"], args)
