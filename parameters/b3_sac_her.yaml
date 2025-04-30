@@ -1,0 +1,42 @@
+human: false
+
+testing: false
+
+reward_function: 
+  cost: true
+
+  cost_scale: 0.1 
+
+  raise: 1.0
+
+training_parameters:
+  lift_threshold: 0.01
+
+  algorithm:
+    len_episode: 50
+
+  replay_buffer_kwargs:
+    buffer_size: 1000000
+    # parallel env numbers
+    n_envs: 1
+
+    optimize_memory_usage: false
+
+    handle_timeout_termination: true
+
+    n_sampled_goal: 4
+
+    goal_selection_strategy: future
+
+    copy_info_dict: false
+
+
+  sac_kwargs:
+    learning_rate: 3e-4
+    buffer_size: 1000000
+    batch_size: 256
+    train_freq: 1
+    gradient_steps: 1
+    gamma: 0.99
+    tau: 0.005
+    ent_coef: auto
