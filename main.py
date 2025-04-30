@@ -49,9 +49,9 @@ if __name__ == "__main__":
     
     
     if "train2" in params["training_parameters"].keys():
-        sac.train2(sim, params["training_parameters"], args, logger)
+        pi = sac.train2(sim, params["training_parameters"], args, logger)
     else:
         sac.train(sim, params["training_parameters"], args)
     if "testing" in params["training_parameters"].keys():
-        sac.test(sim)
+        sac.test(sim, pi)
     print("python done.")
