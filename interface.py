@@ -16,6 +16,7 @@ from itertools import product
 import tqdm
 import json
 
+import copy
 import matplotlib.pyplot as plt
 import networkx as nx
 import torch
@@ -28,7 +29,7 @@ class Sim:
     
         reward_params = params["reward_function"]
         self.env, self.mem_reward, self.state, self.done = None, None, None, 0
-        self.eef_pos, self.cube_pos = np.array([-math.inf, -math.inf, -math.inf]), np.array([0,0,0])
+        self.eef_pos, self.cube_pos = None, None
         # Initialize (reset)
         self.has_renderer = False
         
@@ -38,7 +39,7 @@ class Sim:
         #
         
         # FOR RAISE REWARD #
-        self.initial_cube_z = 0
+        
         #
         has_renderer = False
         use_sim_camera = False
@@ -54,7 +55,7 @@ class Sim:
         
         
         self.reset(has_renderer=has_renderer, use_sim_camera=use_sim_camera)
-        
+        self.initial_cube = self.eef_pos
         
         
         self.use_cost = bool(reward_params["cost"])
@@ -100,17 +101,25 @@ class Sim:
         
         # Take initial step to get obs
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
-        self.mem_reward = torch.tensor(self.raise_reward(obs), dtype=torch.float32)
         # send obs, etc. to sim_vision for detection. kinda sloppy, we get positions in multiple places
-        detection = self.sim_vision.detect(obs, self.env, no_cap= not has_renderer)
-        self.state = detection
+        self.initial_cube = obs['cube_pos']
+        detection = self.sim_vision.detect(obs, self.env, no_cap = not has_renderer)
+        self.initial_goal = np.array([self.initial_cube[0], self.initial_cube[1], self.initial_cube[2] + 0.05])
+        goal = torch.tensor(self.initial_goal, dtype=torch.float32)
+        self.cube_pos = detection[3:6]
+        self.state = torch.cat((detection, goal))
+        
+        site_name = self.env.robots[0].gripper['right'].important_sites["grip_site"]
+        eef_site_id = self.env.sim.model.site_name2id(site_name)
+        self.eef_pos = self.env.sim.data.site_xpos[eef_site_id]
         
         self.sim_vision.reset()
         
         # FOR CUBE Z (for reward)    
-        self.initial_cube_z = obs['cube_pos'][2]
-        
 
+
+        
+        self.mem_reward = torch.tensor(self.raise_reward(self.eef_pos, self.initial_cube, self.initial_goal), dtype=torch.float32)
         
     def observe(self):
         state = self.state
@@ -126,17 +135,14 @@ class Sim:
         eef_site_id = self.env.sim.model.site_name2id(site_name)
         self.eef_pos = self.env.sim.data.site_xpos[eef_site_id]
 
-        self.cube_pos = obs['cube_pos']
         detection = self.sim_vision.detect(obs, self.env, no_cap = not w_video)
-        
-        self.state = detection
+        goal = torch.tensor(self.goal(), dtype=torch.float32)
+        self.cube_pos = copy.deepcopy(detection[3:6])
+        self.state = torch.cat((detection, goal))
+
         
         ### Update reward ###
-        raise_reward = torch.tensor(self.raise_reward(obs), dtype=torch.float32)
-        # cost (if applicable)
-        if not raise_reward == self.reward_for_raise:
-            if self.use_cost:
-                raise_reward -= self.torq_cost(action)
+        raise_reward = self.calculate_reward(self.eef_pos, self.cube_pos, torch.tensor(self.initial_goal, dtype=torch.float32), standardized_action)
         # stored for access with Sim.reward()
         self.mem_reward = raise_reward
         
@@ -145,6 +151,20 @@ class Sim:
             self.done = 1
         else:
             self.done = 0      
+    
+    def calculate_reward(self, eef_pos, cube_pos, cube_goal, action):
+        raise_reward = torch.tensor(self.raise_reward(eef_pos, cube_pos, cube_goal), dtype=torch.float32)
+        # cost (if applicable)
+        if not raise_reward == self.reward_for_raise:
+            if self.use_cost:
+                raise_reward -= self.torq_cost(action)
+        return raise_reward
+    
+    def goal(self):
+        initial = copy.deepcopy(self.initial_cube)
+        goal = [initial[0], initial[1], initial[2] + 0.05]
+        return np.array(goal)
+        
         
     def reward(self):
         return self.mem_reward
@@ -156,14 +176,14 @@ class Sim:
         
         return cost
         
-    def raise_reward(self, obs):
-        eef_pos = obs['robot0_eef_pos']
-        cube_pos = obs['cube_pos']
-        z_diff = (cube_pos[2] - self.initial_cube_z)
+    def raise_reward(self, eef_pos, cube_pos, goal):
+        threshold = 0.05
+        condition_threshold = 0.02
         #print("Reward calculation:", cube_pos[2], "-", self.initial_cube_z, "=", z_diff, "> 0.01? (1 or 0.1) AND...")
         #print("\teef_pos - cube_pos == X:", eef_pos, "-", cube_pos, "=", np.linalg.norm((eef_pos - cube_pos)), "< 0.04?")
-        delta = np.linalg.norm((eef_pos - cube_pos))
-        if z_diff > .01 and delta < 0.04:
+        condition = np.linalg.norm((cube_pos - eef_pos)) < condition_threshold
+        delta = np.linalg.norm((goal - cube_pos))
+        if delta < threshold and condition:
             return self.reward_for_raise
         else:
             return -0.1
@@ -240,7 +260,7 @@ if __name__ == "__main__":
                 continue
         standardized_action = [action[0], action[1], action[2], 0, 0, 0, action[3]]
         obs, _, _, _ = env.step(standardized_action)
-        print(robot._hand_pos['right'])
+
         state = robot._hand_pos['right']
    
         

@@ -21,7 +21,7 @@ class SimVision:
     def reset(self):
         cv2.destroyAllWindows()
         self.cube_position = None
-        self.eef_position = None
+        self.eef_pos = None
         #self.cap = cv2.VideoCapture(0)
     
             
@@ -65,6 +65,7 @@ class SimVision:
             _3d_positions = self.positions_from_labelled_pixels(centers, env_depth, env.sim)
         else: # no camera
             _3d_positions = obs['cube_pos']
+            #print(_3d_positions)
             
         # show for teleop #
         if not no_cap and self.use_sim_camera:
@@ -75,16 +76,15 @@ class SimVision:
             
         site_name = env.robots[0].gripper['right'].important_sites["grip_site"]
         eef_site_id = env.sim.model.site_name2id(site_name)
-        eef_pos = env.sim.data.site_xpos[eef_site_id]
+        self.eef_pos = env.sim.data.site_xpos[eef_site_id]
         
-        distance = _3d_positions - env.robots[0]._hand_pos['right']
+        distance = _3d_positions - self.eef_pos
         grasp = self.grasp_position(obs)
-        pp = env.robots[0]._hand_pos['right']
         #print(pp)
         #print(_3d_positions)
         #print(distance)
         #print(grasp)
-        np_array = np.concatenate((pp, _3d_positions, distance, grasp))
+        np_array = np.concatenate((self.eef_pos, _3d_positions, distance, grasp))
         #print("Detection:", np_array, "(length:", len(np_array), ")")
         return torch.tensor(np_array, dtype=torch.float32)
     

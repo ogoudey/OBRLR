@@ -36,7 +36,7 @@ class ReplayBuffer:
         
         # Build the batch dictionary
         batch = {
-            "states": torch.stack([torch.tensor(step.state.state, dtype=torch.float32) for step in batch_steps]),
+            "states": torch.stack([torch.tensor(step.state, dtype=torch.float32) for step in batch_steps]),
             "actions": torch.stack([torch.tensor(step.action, dtype=torch.float32) for step in batch_steps]),
             "rewards": torch.stack([torch.tensor(step.reward, dtype=torch.float32) for step in batch_steps]),
             "next_states": torch.stack([torch.tensor(step.next_state, dtype=torch.float32) for step in batch_steps]),
@@ -79,28 +79,17 @@ class Episode:
     
 class Step:
     def __init__(self, state, action, reward, next_state, done):
-
-        if type(state) == Hindsight:
-
-            self.state = state
-        else:   # This is not HER -- i.e. hindsight w/o content
-            self.state = Hindsight(state)
+        self.state = state.detach().numpy()
         self.action = action
         self.reward = reward.detach().numpy()
         self.next_state = next_state.detach().numpy()
         self.done = done
-
-class Hindsight:
-    def __init__(self, state, pos=None, goal=None):
-        self.state = torch.tensor(state, dtype=torch.float32)
-        self.actual = pos
-        self.desired = goal
         
 
 class QNetwork(nn.Module):
     def __init__(self, params):
         
-        state_action_dim = 14 # 10 state dimension, 4 action dimension
+        state_action_dim = 17 # 13 state dimension, 4 action dimension
         q_value_dim = 1
         super(QNetwork, self).__init__()
         self.fc1 = nn.Linear(state_action_dim, params['hidden_layers']['l1'])
@@ -123,7 +112,7 @@ class QNetwork(nn.Module):
 
 class PolicyNetwork(nn.Module):
     def __init__(self, params):
-        state_dim = 10 # 3 eef location, 3 cube location, 3 delta locations, gripper
+        state_dim = 13 # 3 eef location, 3 cube location, 3 delta locations, 3 cube goal location, gripper
         action_dim = 4 # 3 dimensions, gripper
         super(PolicyNetwork, self).__init__()
         self.fc1 = nn.Linear(state_dim, params['hidden_layers']['l1'])
@@ -134,6 +123,7 @@ class PolicyNetwork(nn.Module):
         self.log_std_layer = nn.Linear(params['hidden_layers']['l2'], action_dim)
     
     def forward(self, state):
+        #print(state)
         x = F.relu(self.fc1(state))
 
         x = F.relu(self.fc2(x))
@@ -146,10 +136,7 @@ class PolicyNetwork(nn.Module):
         return mean, std
 
     def sample(self, state):
-        if type(state) == Hindsight:    # a Hindsight state
-            mean, std = self.forward(state.state)
-        else:
-            mean, std = self.forward(state)
+        mean, std = self.forward(state)
         #print("Means:", mean, "\nSTD:", std)
         normal = torch.distributions.Normal(mean, std)
         dist = torch.distributions.TransformedDistribution(normal, torch.distributions.TanhTransform(cache_size=1))
@@ -233,7 +220,6 @@ def train2(sim, params, args, logger):
     if "HER" in params.keys():
         if params["HER"]:
             HER = True
-            HER_distance_reward_threshold = 0.05
     
     
     steps_taken = 0
@@ -243,10 +229,6 @@ def train2(sim, params, args, logger):
     
     try: 
         for step in tqdm(range(1, total_steps), position=0):
-            if HER:
-                actual = sim.eef_pos
-                goal = sim.cube_pos
-                state = Hindsight(state, actual, goal)
             action_, std = policy.sample(state)
             stds.append(std.detach().numpy())
             action = action_.detach().numpy()
@@ -271,22 +253,25 @@ def train2(sim, params, args, logger):
                 if HER:
                     logger.info(f"__HER Sampling {step}__")
                     he = Episode()
-                    for t in range(0, len_episode):
+                    for t in range(0, len(e.steps) -1):
+                        future = random.randint(t+2, t + min(8, len(e.steps) - t)) -1
 
-                        achieved = random.choice(range(t, len_episode))
-
-                        achieved_goal = e.steps[achieved].state.actual
-                        distance =  np.linalg.norm(e.steps[t].state.actual - achieved_goal)
+                        final = e.steps[future]
+                        state = final.state
+                        achieved_cube_pos = state[3:6]
+                        new_goal = achieved_cube_pos
+                        HER_reward = sim.calculate_reward(e.steps[t].state[0:3], e.steps[t].state[3:6], new_goal, e.steps[t].action)
+                        logger.info(f"Current {t}, {e.steps[t].state[3:6]} with goal {e.steps[t].state[10:13]}")
+                        logger.info(f"Future from step {future} acheived {achieved_cube_pos};")
                         
-                        if distance < HER_distance_reward_threshold:
-                            HER_reward = 1
-                        else:
-                            HER_reward = -0.01
-                        logger.info(f"Future {achieved_goal}; Current actual {e.steps[t].state.actual}; Distance {distance}; Reward {HER_reward}")
                         H_state = copy.deepcopy(e.steps[t].state)
-                        H_state.goal = achieved_goal
+                        H_state[10:13] = achieved_cube_pos # goal = acheived
+                        H_state = torch.tensor(H_state, dtype=torch.float32)
+                        logger.info(f"Assigned {achieved_cube_pos} to current goal {H_state[10:13]};")
+                        logger.info(f"EEF at {H_state[0:3]}; Cube position {H_state[3:6]}; Reward {HER_reward}")
+                        
                         H_next_state = copy.deepcopy(e.steps[t].next_state)
-                        he.append(H_state, e.steps[t].action, torch.tensor(HER_reward, dtype=torch.float32), torch.tensor(H_next_state, dtype=torch.float32), e.steps[t].done)
+                        he.append(H_state, e.steps[t].action, torch.tensor(HER_reward, dtype=torch.float32), torch.tensor(H_next_state, dtype=torch.float32), final.done) # done == 1
                     rb.append(he)
                 sim.env._step_counter = 0
                 
