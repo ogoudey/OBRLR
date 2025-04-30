@@ -95,7 +95,7 @@ class Sim:
        
         
         # Set starting joints (a bad starting position after all?)
-        desired_joint_positions = [math.pi, 0.0, 0.0, -math.pi/2, 0.0, -math.pi/2, 0]
+        desired_joint_positions = [0.0, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
         self.env.robots[0].set_robot_joint_positions(desired_joint_positions)
         
         

@@ -162,6 +162,8 @@ trained_critic2 = None
 
 # train method based on OpenAI's spinningup
 def train2(sim, params, args, logger):
+    
+
     ### plotting
     q_losses = []
     pi_losses = []
@@ -193,7 +195,11 @@ def train2(sim, params, args, logger):
     else:
         print("Starting new replay buffer...")
         rb = ReplayBuffer()        
-    
+    ### If including a teleop episode (will this work?) ###
+    if "teleop" in params.keys():
+        for tele_episode in range(0, params["teleop"]):
+            collect_teleop_data(sim, rb, "dump")
+    ###
     policy_optimizer = optim.Adam(policy.parameters(), params['networks']['policy']['lr'])
     q1_optimizer = optim.Adam(critic1.parameters(), params['networks']['q']['lr'])
     q2_optimizer = optim.Adam(critic2.parameters(), params['networks']['q']['lr'])
@@ -620,6 +626,7 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
 def collect_teleop_data(sim, rb, rb_save_name):
     try:
         speed = 0.1
+        sim.env = None
         sim.reset(has_renderer=True, use_sim_camera=True)
         e = Episode()
         state = sim.observe()
@@ -647,8 +654,9 @@ def collect_teleop_data(sim, rb, rb_save_name):
             sim.act(action, w_video=True)
             reward = sim.reward()   
             next_state = sim.observe()
+            done = sim.done
             e.append(state, action, reward, next_state, 0)
-            print("State:", state, "\nAction:", action, "\nReward:", reward, "\nState':", next_state, "\n")         
+            print("State:", state, "\nAction:", action, "\nReward:", reward, "\nState':", next_state, "\nDone?", done)         
             state = next_state
             
             
