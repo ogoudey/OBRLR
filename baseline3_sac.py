@@ -127,32 +127,33 @@ def train_sac(sim, params, args):
     n_sampled_goal = rb_config["n_sampled_goal"]
     copy_info_dict = rb_config["copy_info_dict"]
     
-    sac_replay_buffer = HerReplayBuffer(
-        env=env,
-        buffer_size=buffer_size,
-        observation_space=observation_space,
-        action_space=action_space,
-        n_envs=n_envs,
-        optimize_memory_usage=optimize_memory_usage,
-        handle_timeout_termination=handle_timeout_termination,
-        goal_selection_strategy=goal_selection_strategy,
-        n_sampled_goal=n_sampled_goal,
-        copy_info_dict=copy_info_dict
-    )    
+    # Choose the policy type for Dict observation space
+    policy_type = "MultiInputPolicy"  
+    
+     
     
     model_class = SAC 
 
     model_save_path = params.get("policy_save_name", "sac_kinova_lift_model")
 
-    # Choose the policy type for Dict observation space
-    policy_type = "MultiInputPolicy"  
+    """
+     env=env,
+            buffer_size=buffer_size,
+            observation_space=observation_space,
+            action_space=action_space,
+            n_envs=n_envs,
+            optimize_memory_usage=optimize_memory_usage,
+            handle_timeout_termination=handle_timeout_termination,
+            goal_selection_strategy=goal_selection_strategy,
+            n_sampled_goal=n_sampled_goal,
+            copy_info_dict=copy_info_dict  
+    """
 
     # Initialize HER with SAC model
-    model = HerReplayBuffer(
+    model = model_class(
         policy_type,
         env,
-        model_class,
-        replay_buffer_class= sac_replay_buffer,
+        replay_buffer_class= HerReplayBuffer,   
         verbose=1,
         **params.get("sac_kwargs", {})
     )
