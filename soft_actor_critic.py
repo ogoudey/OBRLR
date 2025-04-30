@@ -36,10 +36,11 @@ class ReplayBuffer:
         
         # Build the batch dictionary
         batch = {
-            "states": torch.stack([torch.tensor(step.state, dtype=torch.float32) for step in batch_steps]),
+            "states": torch.stack([torch.tensor(step.state.state, dtype=torch.float32) for step in batch_steps]),
             "actions": torch.stack([torch.tensor(step.action, dtype=torch.float32) for step in batch_steps]),
             "rewards": torch.stack([torch.tensor(step.reward, dtype=torch.float32) for step in batch_steps]),
-            "next_states": torch.stack([torch.tensor(step.next_state, dtype=torch.float32) for step in batch_steps])
+            "next_states": torch.stack([torch.tensor(step.next_state, dtype=torch.float32) for step in batch_steps]),
+            "done": torch.stack([torch.tensor(step.done, dtype=torch.float32) for step in batch_steps]),
         }
         assert not torch.isnan(batch["states"]).any()
         assert not torch.isnan(batch["actions"]).any()
@@ -71,17 +72,30 @@ class Episode:
     def __init__(self):
         self.steps = []
     
-    def append(self, state, action, reward, next_state):
+    def append(self, state, action, reward, next_state, done):
         #print(state, action, reward, next_state)
-        step = Step(state, action, reward, next_state)
+        step = Step(state, action, reward, next_state, done)
         self.steps.append(step)
     
 class Step:
-    def __init__(self, state, action, reward, next_state):
-        self.state = state.detach().numpy()
+    def __init__(self, state, action, reward, next_state, done):
+
+        if type(state) == Hindsight:
+
+            self.state = state
+        else:   # This is not HER -- i.e. hindsight w/o content
+            self.state = Hindsight(state)
         self.action = action
         self.reward = reward.detach().numpy()
         self.next_state = next_state.detach().numpy()
+        self.done = done
+
+class Hindsight:
+    def __init__(self, state, pos=None, goal=None):
+        self.state = torch.tensor(state, dtype=torch.float32)
+        self.actual = pos
+        self.desired = goal
+        
 
 class QNetwork(nn.Module):
     def __init__(self, params):
@@ -132,7 +146,10 @@ class PolicyNetwork(nn.Module):
         return mean, std
 
     def sample(self, state):
-        mean, std = self.forward(state)
+        if type(state) == Hindsight:    # a Hindsight state
+            mean, std = self.forward(state.state)
+        else:
+            mean, std = self.forward(state)
         #print("Means:", mean, "\nSTD:", std)
         normal = torch.distributions.Normal(mean, std)
         dist = torch.distributions.TransformedDistribution(normal, torch.distributions.TanhTransform(cache_size=1))
@@ -153,8 +170,8 @@ class PolicyNetwork(nn.Module):
 
 
 trained_policy = None
-trained_qnetwork = None
-
+trained_critic1 = None
+trained_critic2 = None
 
 # train method based on OpenAI's spinningup
 def train2(sim, params, args, logger):
@@ -162,6 +179,14 @@ def train2(sim, params, args, logger):
     q_losses = []
     pi_losses = []
     max_ep_rewards = []
+    q1s = []
+    q2s = []
+    stds = []
+    action_magnitudes = []
+    q1s_mean = []
+    q1s_max = []
+    q1s_min = []
+    q1s_std = []
     ###
     
     torch.set_num_threads(torch.get_num_threads()) # Needed?
@@ -202,30 +227,74 @@ def train2(sim, params, args, logger):
     gradient_after = params['algorithm']['gradient_after']
     gradient_every = params['algorithm']['gradient_every']
     save_every = params['algorithm']['save_every']
+    full_sim_reset_every = 50000
+    HER = False
+    
+    if "HER" in params.keys():
+        if params["HER"]:
+            HER = True
+            HER_distance_reward_threshold = 0.05
+    
     
     steps_taken = 0
     state = sim.observe()
     e = Episode()
     max_ep_reward = -99
+    
     try: 
-        for step in tqdm(range(0, total_steps), position=0):
-
-            action = policy.sample(state)[0].detach().numpy()
+        for step in tqdm(range(1, total_steps), position=0):
+            if HER:
+                actual = sim.eef_pos
+                goal = sim.cube_pos
+                state = Hindsight(state, actual, goal)
+            action_, std = policy.sample(state)
+            stds.append(std.detach().numpy())
+            action = action_.detach().numpy()
+            logger.info(f"____Taking action {step}___")
             sim.act(action)
+            logger.info(f"Standard deviation {std}")
+            action_magnitudes.append(np.linalg.norm(action))
+            logger.info(f"Action {action}; Magnitude {np.linalg.norm(action)}")
             reward = sim.reward()
             max_ep_reward = max(max_ep_reward, reward)
             next_state = sim.observe()
-            e.append(state, action, reward, next_state)
+            done = sim.done
+            e.append(state, action, reward, next_state, done)
             state = next_state
-            #print(step, end=", ")
+
             
 
-            if step % len_episode == 0:
+            if step % len_episode == 0 or done == 1:
                 rb.append(e)
-                e = Episode()
+                max_ep_rewards.append(max_ep_reward)
+                max_ep_reward = -99
+                if HER:
+                    logger.info(f"__HER Sampling {step}__")
+                    he = Episode()
+                    for t in range(0, len_episode):
+
+                        achieved = random.choice(range(t, len_episode))
+
+                        achieved_goal = e.steps[achieved].state.actual
+                        distance =  np.linalg.norm(e.steps[t].state.actual - achieved_goal)
+                        
+                        if distance < HER_distance_reward_threshold:
+                            HER_reward = 1
+                        else:
+                            HER_reward = -0.01
+                        logger.info(f"Future {achieved_goal}; Current actual {e.steps[t].state.actual}; Distance {distance}; Reward {HER_reward}")
+                        H_state = copy.deepcopy(e.steps[t].state)
+                        H_state.goal = achieved_goal
+                        H_next_state = copy.deepcopy(e.steps[t].next_state)
+                        he.append(H_state, e.steps[t].action, torch.tensor(HER_reward, dtype=torch.float32), torch.tensor(H_next_state, dtype=torch.float32), e.steps[t].done)
+                    rb.append(he)
+                sim.env._step_counter = 0
+                
                 sim.reset()
                 state = sim.observe()
-                max_ep_rewards.append(max_ep_reward)    
+                if step % full_sim_reset_every == 0:
+                    sim.env = None
+                    sim.reset()
                 
             if step > gradient_after and step % gradient_every == 0:
                 for grad in range(0, gradient_every):
@@ -234,15 +303,23 @@ def train2(sim, params, args, logger):
                     actions = batch['actions']
                     rewards = batch['rewards']
                     next_states = batch['next_states']
-                    logger.info("_____Q Network Update {step}_____")
+                    done = batch['done']
+                    logger.info(f"_____Q Network Update {step}_____")
                     state_actions = torch.cat((states, actions), dim=-1)
                     q1_current = critic1(state_actions)
                     q2_current = critic2(state_actions)
+                    q1s.append(q1_current.mean().item()) # for plotting
+                    q2s.append(q2_current.mean().item())
                     
+                    plottable = q1_current.detach().cpu().numpy()  # shape (batch_size, 1)
+                    q1s_mean.append(plottable.mean())
+                    q1s_max.append(plottable.max())
+                    q1s_min.append(plottable.min())
+                    q1s_std.append(plottable.std())
+
                     logger.info(f"Q1 {q1_current.detach().numpy().mean()}; Q2 {q2_current.detach().numpy().mean()}")   
                     logger.info(f"Mean reward {rewards.detach().numpy().mean()}; 1 reward? {np.any(rewards.numpy() == 1)}")
-                    if np.any(rewards.numpy() == 1):
-                        print("YES!")
+                    
                     
                     with torch.no_grad():
                         next_actions, next_log_probs = policy.sample(next_states)
@@ -250,7 +327,7 @@ def train2(sim, params, args, logger):
                         q1_next = qnetwork1(next_state_actions)
                         q2_next = qnetwork2(next_state_actions)
                         min_q_next = torch.min(q1_next, q2_next)
-                        target_q = rewards + gamma * (min_q_next - (alpha * next_log_probs))
+                        target_q = rewards + gamma * (1 - done) * (min_q_next - (alpha * next_log_probs))
                         # clamp the change around the reward scale
                         #target_q = torch.clamp(raw_target, -1.0, 1.0)   
                     
@@ -285,7 +362,7 @@ def train2(sim, params, args, logger):
                     for param, target_param in zip(critic2.parameters(), qnetwork2.parameters()):
                         target_param.data.mul_(mix)
                         target_param.data.add_((1 - mix) * param.data)
-                    logger.info("_____Actor Update {step}_____")
+                    logger.info(f"_____Actor Update {step}_____")
                     # Actor update #
                     new_actions, log_probs = policy.sample(states)  
                     logger.info(f"Action mean {new_actions.detach().numpy().mean()}; Log prob mean {log_probs.detach().numpy().mean()};")
@@ -324,30 +401,51 @@ def train2(sim, params, args, logger):
             steps_taken += 1
             #print("Replay buffer was saved to", params["rb_save_name"])
     except KeyboardInterrupt:
-        print("Exiting...")
-        plt.plot(range(0, len(q_losses)), q_losses)
-        plt.title("Q-losses")
-        plt.savefig("figures/qlosses_"+params["configuration_save_name"]+".png")                
-        plt.plot(range(0, len(pi_losses)), pi_losses)
-        plt.title("Policy-losses")
-        plt.savefig("figures/policy_losses_"+params["configuration_save_name"]+".png")
-        
-        plt.plot(range(0, len(max_ep_rewards)), max_ep_rewards)
-        plt.title("Max rewards / episode")
-        plt.savefig("figures/max_ep_rewards_"+params["configuration_save_name"]+".png")
-    """
-    # Optional interactive training...
-    inp = input("#/n: ")
-    while not inp == "n":
-        try:
-            num_iterations = int(inp)
-            left_margin += num_iterations
-            break
-        except ValueError:
-            inp = input("#/n: ")
-    if inp == "n":
-        break
-    """
+       print("Exiting")
+    plt.figure() 
+    plt.plot(range(0, len(q1s)), q1s, label="Q1")
+    plt.plot(range(0, len(q2s)), q2s, label="Q2")
+    plt.title("Q values")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_qs.png")                
+    plt.figure() 
+    plt.plot(range(0, len(q_losses)), q_losses)
+    plt.title("Q-losses")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_qlosses.png")                
+    plt.figure() 
+    plt.plot(range(0, len(pi_losses)), pi_losses)
+    plt.title("Policy-losses")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_policy_losses.png")
+    plt.figure()         
+    plt.plot(range(0, len(max_ep_rewards)), max_ep_rewards)
+    plt.title("Max rewards / episode")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_max_ep_rewards.png")
+    plt.figure()         
+    plt.plot(range(0, len(stds)), stds)
+    plt.title("Policy entropy")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_stds.png")
+    plt.figure()         
+    plt.plot(range(0, len(action_magnitudes)), action_magnitudes)
+    plt.title("Action magnitudes")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_action_magnitudes.png")
+    plt.figure()         
+    plt.plot(range(0, len(q1s_mean)), q1s_mean)
+    plt.title("Q1 mean")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_q1_mean.png")
+    q1s_mean = []
+    plt.figure()         
+    plt.plot(range(0, len(q1s_max)), q1s_max)
+    plt.title("Q1 max")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_q1s_max.png")
+    plt.figure()         
+    plt.plot(range(0, len(q1s_min)), q1s_min)
+    plt.title("Q1 min")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_q1s_min.png")
+    plt.figure()         
+    plt.plot(range(0, len(q1s_std)), q1s_std)
+    plt.title("Q1 standard deviation")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_q1s_std.png")
+    return policy
+    
 
 
 
@@ -389,6 +487,7 @@ def train(sim, params, args):
     gamma, alpha = params['algorithm']['gamma'], params['algorithm']['alpha']
     
     avg_succ_rts = []
+    sim.env = None
     while True:
     
         for iteration in tqdm(range(0, num_iterations), position=0):
@@ -540,7 +639,7 @@ def collect_teleop_data(sim, rb, rb_save_name):
         e = Episode()
         state = sim.observe()
         while True:
-            
+            print(sim.eef_pos, sim.cube_pos)
             action = np.array([0.0,0.0,0.0,0.0])
             trigger = input("Button: ")
             if trigger == "q":
@@ -563,7 +662,7 @@ def collect_teleop_data(sim, rb, rb_save_name):
             sim.act(action, w_video=True)
             reward = sim.reward()   
             next_state = sim.observe()
-            e.append(state, action, reward, next_state)
+            e.append(state, action, reward, next_state, 0)
             print("State:", state, "\nAction:", action, "\nReward:", reward, "\nState':", next_state, "\n")         
             state = next_state
             
@@ -576,17 +675,16 @@ def collect_teleop_data(sim, rb, rb_save_name):
         # And save #
         rb.save(rb_save_name)
 
-def test(sim, num_episodes=100, render=True):
+def test(sim, trained_policy, num_episodes=100, render=True):
     import time
     sim.has_renderer = True
-    global trained_policy
+    
     num_steps = 1000
     successes = 0
     trials = 0
     print("Episodes of len", num_steps)
     input("<press any key>")
     for episode in range(0, num_episodes):
-        sim.reset(render)
         state = sim.observe()
         for step in range(0, num_steps):
             print("State", state)
@@ -600,7 +698,9 @@ def test(sim, num_episodes=100, render=True):
             if reward.item() == sim.reward_for_raise:
                 time.sleep(2)
                 successes += 1
+                sim.reset(has_renderer=True)
                 break
+                
         trials += 1
         print("Success rate:", successes/trials)
     return successes/trials  
@@ -659,6 +759,10 @@ def setup_logger(params, params_file_name):
         )
     
     log_path = "logs/" + experiment_name + ".logs"
+    
+    log_dir = os.path.dirname(log_path)
+    os.makedirs(log_dir, exist_ok=True)
+    
     fh = logging.FileHandler(log_path)
     fh.setLevel(logging.INFO)
     formatter = logging.Formatter(

@@ -25,7 +25,7 @@ class SimVision:
         #self.cap = cv2.VideoCapture(0)
     
             
-    def detect(self, obs, env, no_cap=True):
+    def detect(self, obs, sim, no_cap=True):
         
         if self.use_sim_camera:
             env_image = obs["sideview_image"]
@@ -62,7 +62,7 @@ class SimVision:
                 pass
             
             
-            _3d_positions = self.positions_from_labelled_pixels(centers, env_depth, env.sim)
+            _3d_positions = self.positions_from_labelled_pixels(centers, env_depth, sim)
         else: # no camera
             _3d_positions = obs['cube_pos']
             
@@ -71,12 +71,7 @@ class SimVision:
             env_image = obs["sideview_image"]
             img = Image.fromarray(env_image, 'RGB')     
             cv2.imshow("Detections", img)
-            key = cv2.waitKey(5)
-            
-        site_name = env.robots[0].gripper['right'].important_sites["grip_site"]
-        eef_site_id = env.sim.model.site_name2id(site_name)
-        eef_pos = env.sim.data.site_xpos[eef_site_id]
-        
+            key = cv2.waitKey(5) 
         distance = _3d_positions - env.robots[0]._hand_pos['right']
         grasp = self.grasp_position(obs)
         pp = env.robots[0]._hand_pos['right']
