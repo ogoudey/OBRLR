@@ -80,7 +80,7 @@ def move_vector(base, vector):
 
 
 def test_policy(policy):
-    done = True
+    done = False
     while not done:
         try:
             # get state:

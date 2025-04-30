@@ -101,25 +101,47 @@ class Sim:
         
         # Take initial step to get obs
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
-        # send obs, etc. to sim_vision for detection. kinda sloppy, we get positions in multiple places
-        self.initial_cube = obs['cube_pos']
-        detection = self.sim_vision.detect(obs, self.env, no_cap = not has_renderer)
-        self.initial_goal = np.array([self.initial_cube[0], self.initial_cube[1], self.initial_cube[2] + 0.05])
-        goal = torch.tensor(self.initial_goal, dtype=torch.float32)
-        self.cube_pos = detection[3:6]
-        self.state = torch.cat((detection, goal))
+        # form initial state
+        self.form_state(obs)
         
-        site_name = self.env.robots[0].gripper['right'].important_sites["grip_site"]
-        eef_site_id = self.env.sim.model.site_name2id(site_name)
-        self.eef_pos = self.env.sim.data.site_xpos[eef_site_id]
+        self.initial_cube = obs['cube_pos']
+        self.initial_goal = np.array([self.initial_cube[0], self.initial_cube[1], self.initial_cube[2] + 0.05]) # The actual goal
+        
+        
         
         self.sim_vision.reset()
         
-        # FOR CUBE Z (for reward)    
-
-
-        
         self.mem_reward = torch.tensor(self.raise_reward(self.eef_pos, self.initial_cube, self.initial_goal), dtype=torch.float32)
+
+    def form_state(self, obs):
+        # state 0:3
+        site_name = self.env.robots[0].gripper['right'].important_sites["grip_site"]
+        eef_site_id = self.env.sim.model.site_name2id(site_name)
+        self.eef_pos = self.env.sim.data.site_xpos[eef_site_id]
+        # state 3:6
+        detection = self.sim_vision.detect(obs, self.env, w_video=has_renderer)  
+        self.cube_pos = detection
+        # state 6:9      
+        delta = detection - self.eef_pos
+        # state 9
+        gripper_pos = obs["robot0_gripper_qpos"]    
+        opening = gripper_pos.mean()
+        current_grasp = np.array([opening])
+        # state 10:13
+        goal = self.initial_goal
+        
+        #print(pp)
+        #print(_3d_positions)
+        #print(distance)
+        #print(grasp)
+        #print(goal)
+
+        np_concatenation = np.concatenate((self.eef_pos, detection, delta, current_grasp, self.initial_goal))
+        
+        # tensor for networks
+        self.state = torch.cat(np_concatenation)
+        
+        
         
     def observe(self):
         state = self.state
@@ -131,14 +153,7 @@ class Sim:
         #print("Standardized action:", standardized_action)
         obs, _, _, _ = self.env.step(standardized_action)
         
-        site_name = self.env.robots[0].gripper['right'].important_sites["grip_site"]
-        eef_site_id = self.env.sim.model.site_name2id(site_name)
-        self.eef_pos = self.env.sim.data.site_xpos[eef_site_id]
-
-        detection = self.sim_vision.detect(obs, self.env, no_cap = not w_video)
-        goal = torch.tensor(self.goal(), dtype=torch.float32)
-        self.cube_pos = copy.deepcopy(detection[3:6])
-        self.state = torch.cat((detection, goal))
+        self.form_state(obs) # form state
 
         
         ### Update reward ###
@@ -244,12 +259,13 @@ if __name__ == "__main__":
         elif trigger == "r":
             action[3] = speed
         elif trigger == "p":
-            num_photos = int(input("# photos to take"))
-            for i in tqdm(range(0, num_photos)):
+            num_photos = int(input("# photos to take: "))
+            for i in tqdm.tqdm(range(0, num_photos)):
                 take_onboard_photo(obs)
                 action = np.array([(random.random()-0.5)/k,(random.random()-0.5)/k,(random.random()-0.5)/k,0.0,0.0,0.0,(random.random()-0.5)/10])
                 obs, _, _, _ = env.step(action)
-                
+        elif trigger == "c":
+            env.reset()       
                 
                 #state = take_photo()
                     
