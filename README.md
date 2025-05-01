@@ -5,7 +5,7 @@ To specify the parameters file, use `--params <path_of_yaml>`, typically `parame
 
 To load a replay buffer use `--rb <path_of_replay_buffer>`, something like `--rb replays/teleop.tmp`, but this is not recommended when following SAC conventions.
 
-As of 4/30/25, `python3 main.py --params parameters/home` is the most promising.
+As of 4/30/25, `python3 main.py --params parameters/home` is the most likely to converge among the usages run with `main.py`.
 
 ## Sequential training
 ```
