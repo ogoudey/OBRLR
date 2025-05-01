@@ -136,7 +136,7 @@ class Sim:
         #print(pp)
         #print(_3d_positions)
         #print(distance)
-        #print(grasp)
+        #print(current_grasp)
         #print(goal)
 
         np_concatenation = np.concatenate((self.eef_pos, detection, delta, current_grasp, self.initial_goal))

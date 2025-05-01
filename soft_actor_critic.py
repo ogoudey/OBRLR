@@ -18,13 +18,18 @@ import copy
 import logging
 
 torch.autograd.set_detect_anomaly(True)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class ReplayBuffer:
-    def __init__(self):
+    def __init__(self, capacity=500):
         self.episodes = []
+        self.capacity = capacity
 
     def append(self, episode):
         self.episodes.append(episode)
+        if len(self.episodes) > self.capacity:
+            self.forget(len(self.episodes) - self.capacity)
         
     def sample_batch(self, batch_size):
         # Flatten all episodes into a list of steps
@@ -176,14 +181,15 @@ def train2(sim, params, args, logger):
     q1s_max = []
     q1s_min = []
     q1s_std = []
+    episode_cum_rewards = []
     ###
     
     torch.set_num_threads(torch.get_num_threads()) # Needed?
     if "configuration" in params.keys():
         print("Loading configuration", params["configuration"])
-        critic1 = load_saved_qnetwork(params, "Q1")
-        critic2 = load_saved_qnetwork(params, "Q2")
-        policy = load_saved_policy(params)
+        critic1 = load_saved_qnetwork(params, "Q1").to(device)
+        critic2 = load_saved_qnetwork(params, "Q2").to(device)
+        policy = load_saved_policy(params).to(device)
     else:
         print("Generating new configuration...")
         policy = PolicyNetwork(params['networks']['policy'])
@@ -232,7 +238,7 @@ def train2(sim, params, args, logger):
     state = sim.observe()
     e = Episode()
     max_ep_reward = -99
-    
+    cum_reward = 0
     try: 
         for step in tqdm(range(1, total_steps), position=0):
             action_, std = policy.sample(state)
@@ -244,6 +250,7 @@ def train2(sim, params, args, logger):
             action_magnitudes.append(np.linalg.norm(action))
             logger.info(f"Action {action}; Magnitude {np.linalg.norm(action)}")
             reward = sim.reward()
+            cum_reward += reward
             max_ep_reward = max(max_ep_reward, reward)
             next_state = sim.observe()
             done = sim.done
@@ -255,7 +262,10 @@ def train2(sim, params, args, logger):
             if step % len_episode == 0 or done == 1:
                 rb.append(e)
                 max_ep_rewards.append(max_ep_reward)
+                episode_cum_rewards.append(cum_reward)
                 max_ep_reward = -99
+                cum_reward = 0
+
                 if HER:
                     logger.info(f"__HER Sampling {step}__")
                     he = Episode()
@@ -279,6 +289,7 @@ def train2(sim, params, args, logger):
                         H_next_state = copy.deepcopy(e.steps[t].next_state)
                         he.append(H_state, e.steps[t].action, torch.tensor(HER_reward, dtype=torch.float32), torch.tensor(H_next_state, dtype=torch.float32), final.done) # done == 1
                     rb.append(he)
+                e = Episode()
                 sim.env._step_counter = 0
                 
                 sim.reset()
@@ -435,6 +446,10 @@ def train2(sim, params, args, logger):
     plt.plot(range(0, len(q1s_std)), q1s_std)
     plt.title("Q1 standard deviation")
     plt.savefig("figures/"+params["configuration_save_name"]+"_q1s_std.png")
+    plt.figure()         
+    plt.plot(range(0, len(episode_cum_rewards)), episode_cum_rewards)
+    plt.title("Cumulative reward / episode")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_episode_cum_rewards.png")
     return policy
     
 
