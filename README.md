@@ -1,15 +1,17 @@
 ## `main.py` usage
-Run `python3 main.py` for default configuration with parameters set to those in `params.yaml`. The training loop will proceed then ask if you want to do more iterations (give a number of iterations) or `n`.
+To train or test a SAC implementation in a simulated robotic arm (Kinova) environment, run `python3 main.py` + a parameters file.
 
-To use a specific parameters yaml, use `--params <path_of_yaml>`.
+To specify the parameters file, use `--params <path_of_yaml>`, typically `parameters/x` (without `.yaml`). In the parameters file, put `train2` for the newest training script, put `testing=True` to do visual tests at the end of training, and do `teleop` for starting a run with a teleoped "demonstration" (not currently recommended). Put `HER=True` in the parameters to use Hindsight Experience Replay.
 
-To load a replay buffer use `--rb <path_of_replay_buffer>`, something like `--rb replays/teleop.tmp`. This usage is not recommended when following SAC conventions.
+To load a replay buffer use `--rb <path_of_replay_buffer>`, something like `--rb replays/teleop.tmp`, but this is not recommended when following SAC conventions.
+
+As of 4/30/25, `python3 main.py --params parameters/home` is the most promising.
 
 ## Sequential training
 ```
 $ ./batch_train <params1> <params2> <params3> <params4>...
 ```
-will train in models in a sequence.
+will train models in a sequence.
 
 ## Model + ReplayBuffer saving
 All replay buffers will be saved after data collection to replays/<rb_save_name>, which is specified in parameter files; and all networks (policy, Q1, Q2) are saved in a folder configurations/<configuration_save_name>, which is also in the parameters.
