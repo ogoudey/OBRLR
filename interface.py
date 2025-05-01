@@ -1,6 +1,7 @@
 import numpy as np
 import robosuite as suite
 from robosuite.utils import transform_utils
+from robosuite.utils.placement_samplers import UniformRandomSampler
 #from vision import camera_utils as cu
 from vision import sim_vision
 import torch
@@ -92,23 +93,28 @@ class Sim:
                     has_offscreen_renderer=False,
                     use_camera_obs=False,
                 )
-       
+        
+        
         
         # Set starting joints (a bad starting position after all?)
         desired_joint_positions = [0.0, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
         self.env.robots[0].set_robot_joint_positions(desired_joint_positions)
         
+        self.env.sim.data.set_joint_qpos(self.env.model.mujoco_objects[0].joints[0], np.array([0.0,0.0,0.822,1.0,0.0,0.0,0.0]))
+
+
         
         # Take initial step to get obs
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
         
         self.initial_cube = obs['cube_pos']
+        print(obs['cube_pos'])
         self.initial_goal = np.array([self.initial_cube[0], self.initial_cube[1], self.initial_cube[2] + 0.05]) # The actual goal
         
         # form initial state
         self.form_state(obs)
         
-        
+
         
         
         

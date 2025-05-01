@@ -55,7 +55,7 @@ class ReplayBuffer:
 
     def forget(self, forget_size):
         for i in range(0, forget_size):
-            self.episodes.remove(self.episodes[0])
+            self.episodes.remove(self.episodes[2]) # Avoids the "pilot" episode. Avoids the HER resampled pilot.
     
     def clean(self):
         to_del = []
@@ -203,8 +203,10 @@ def train2(sim, params, args, logger):
         rb = ReplayBuffer()        
     ### If including a teleop episode (will this work?) ###
     if "teleop" in params.keys():
-        for tele_episode in range(0, params["teleop"]):
-            collect_teleop_data(sim, rb, "dump")
+        for tele_episode in range(0, params["teleop"]): # only works with teleop: 1
+            e = collect_teleop_data(sim, rb, "teleop")
+            he = HER_resample(sim, e, logger, mode="final")
+            rb.append(he)
     ###
     policy_optimizer = optim.Adam(policy.parameters(), params['networks']['policy']['lr'])
     q1_optimizer = optim.Adam(critic1.parameters(), params['networks']['q']['lr'])
@@ -267,27 +269,7 @@ def train2(sim, params, args, logger):
                 cum_reward = 0
 
                 if HER:
-                    logger.info(f"__HER Sampling {step}__")
-                    he = Episode()
-                    for t in range(0, len(e.steps) -1):
-                        future = random.randint(t+2, t + min(8, len(e.steps) - t)) -1
-
-                        final = e.steps[future]
-                        state = final.state
-                        achieved_cube_pos = state[3:6]
-                        new_goal = achieved_cube_pos
-                        HER_reward = sim.calculate_reward(e.steps[t].state[0:3], e.steps[t].state[3:6], new_goal, e.steps[t].action)
-                        logger.info(f"Current {t}, {e.steps[t].state[3:6]} with goal {e.steps[t].state[10:13]}")
-                        logger.info(f"Future from step {future} acheived {achieved_cube_pos};")
-                        
-                        H_state = copy.deepcopy(e.steps[t].state)
-                        H_state[10:13] = achieved_cube_pos # goal = acheived
-                        H_state = torch.tensor(H_state, dtype=torch.float32)
-                        logger.info(f"Assigned {achieved_cube_pos} to current goal {H_state[10:13]};")
-                        logger.info(f"EEF at {H_state[0:3]}; Cube position {H_state[3:6]}; Reward {HER_reward}")
-                        
-                        H_next_state = copy.deepcopy(e.steps[t].next_state)
-                        he.append(H_state, e.steps[t].action, torch.tensor(HER_reward, dtype=torch.float32), torch.tensor(H_next_state, dtype=torch.float32), final.done) # done == 1
+                    he = HER_resample(sim, e, logger)
                     rb.append(he)
                 e = Episode()
                 sim.env._step_counter = 0
@@ -452,7 +434,33 @@ def train2(sim, params, args, logger):
     plt.savefig("figures/"+params["configuration_save_name"]+"_episode_cum_rewards.png")
     return policy
     
-
+def HER_resample(sim, e, logger, mode="random_future"):
+    logger.info(f"__HER Sampling__")
+    he = Episode()
+    for t in range(0, len(e.steps) -1):
+        if mode == "random_future":
+            future = random.randint(t+2, t + min(8, len(e.steps) - t)) -1
+        elif mode == "final":
+            future = len(e.steps) - 1
+        
+        final = e.steps[future]
+        state = final.state
+        achieved_cube_pos = state[3:6]
+        new_goal = achieved_cube_pos
+        HER_reward = sim.calculate_reward(e.steps[t].state[0:3], e.steps[t].state[3:6], new_goal, e.steps[t].action)
+        
+        
+        H_state = copy.deepcopy(e.steps[t].state)
+        H_state[10:13] = achieved_cube_pos # goal = acheived
+        H_state = torch.tensor(H_state, dtype=torch.float32)
+        H_next_state = copy.deepcopy(e.steps[t].next_state)
+        he.append(H_state, e.steps[t].action, torch.tensor(HER_reward, dtype=torch.float32), torch.tensor(H_next_state, dtype=torch.float32), final.done) # done == 1
+        
+        logger.info(f"Current {t}, {e.steps[t].state[3:6]} with goal {e.steps[t].state[10:13]}")
+        logger.info(f"Future from step {future} acheived {achieved_cube_pos};")
+        logger.info(f"Assigned {achieved_cube_pos} to current goal {H_state[10:13]};")
+        logger.info(f"EEF at {H_state[0:3]}; Cube position {H_state[3:6]}; Reward {HER_reward}")
+    return he
 
 
 
@@ -646,7 +654,7 @@ def collect_teleop_data(sim, rb, rb_save_name):
         e = Episode()
         state = sim.observe()
         while True:
-            print(sim.eef_pos, sim.cube_pos)
+            print("EEF", sim.eef_pos, "Cube", sim.cube_pos)
             action = np.array([0.0,0.0,0.0,0.0])
             trigger = input("Button: ")
             if trigger == "q":
@@ -671,18 +679,21 @@ def collect_teleop_data(sim, rb, rb_save_name):
             next_state = sim.observe()
             done = sim.done
             e.append(state, action, reward, next_state, 0)
+            if done:
+                break
+                
             print("State:", state, "\nAction:", action, "\nReward:", reward, "\nState':", next_state, "\nDone?", done)         
             state = next_state
             
             
         
     except KeyboardInterrupt:
-        sim.reset()
-        # Append episode after it's decided it's done with `^C` #
-        rb.append(e)
-        # And save #
-        rb.save(rb_save_name)
-
+        break
+    sim.env = None
+    sim.reset()
+    rb.append(e)
+    rb.save(rb_save_name)
+    return e
 def test(sim, trained_policy, num_episodes=100, render=True):
     import time
     sim.has_renderer = True
