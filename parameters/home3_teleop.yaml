@@ -1,8 +1,9 @@
 other_parameters:
-    description: "A different styled parameters file to go into the train2 (Spinning-up style) algorithm"
+    description: "A different styled parameters file to go into the train2 (Spinning-up style) algorithm with HER"
 training_parameters:
     train2: True
     HER: True
+    teleop: 1
     networks:
         policy:
             lr: 0.003
@@ -17,11 +18,11 @@ training_parameters:
     algorithm:    
         num_iterations: 700000
         human: False
-        len_episode: 200
-        batch_size: 128
+        len_episode: 500
+        batch_size: 256
         gamma: 0.99
         alpha: 0.2
-        gradient_after: 200
+        gradient_after: 1000
         gradient_every: 50
         save_every: 10000
     reward_function:
@@ -29,5 +30,5 @@ training_parameters:
         cost_scale: 0.00142857
         raise: 1
         
-    configuration_save_name: "home"
-    rb_save_name: "home"
+    configuration_save_name: "home3"
+    rb_save_name: "home3_teleop"

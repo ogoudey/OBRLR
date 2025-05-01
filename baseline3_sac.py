@@ -1,13 +1,13 @@
 import gym
 import numpy as np
 from gym import spaces
-from stable_baselines3 import SAC, HER
+from stable_baselines3 import SAC, HerReplayBuffer
 from stable_baselines3.her.goal_selection_strategy import GoalSelectionStrategy
 
 def train_sac(sim, params, args):
 
     # Goal-conditioned environment wrapper for Sim
-    class KinovaLiftEnv(gym.GoalEnv):
+    class KinovaLiftEnv(gym.Env):
         def __init__(self, sim_env, threshold=0.01):
             super().__init__()
             self.sim = sim_env
@@ -114,32 +114,51 @@ def train_sac(sim, params, args):
     env = KinovaLiftEnv(sim, threshold=params.get("lift_threshold", 0.01))
     # wrap with TimeLimit to enforce max episode steps
     env = gym.wrappers.TimeLimit(env, max_episode_steps=params.get("algorithm", {}).get("len_episode", 50))
-
     # Prepare HER + SAC model
-    model_class = SAC 
-    n_sampled_goal = params.get("n_sampled_goal", 4)  # number of HER replays per episode
-    goal_selection = params.get("goal_selection_strategy", "future")  
-    online_sampling = params.get("online_sampling", True)
-    total_timesteps = params.get("total_timesteps", 100_000)
-    model_save_path = params.get("policy_save_name", "sac_kinova_lift_model")
-
+    # HER parameters
+    rb_config = params.get("replay_buffer_kwargs", {})
+    buffer_size = rb_config["buffer_size"]
+    observation_space = env.observation_space
+    action_space = env.action_space
+    n_envs = rb_config["n_envs"]
+    optimize_memory_usage = rb_config["optimize_memory_usage"]
+    handle_timeout_termination = rb_config["handle_timeout_termination"]
+    goal_selection_strategy = rb_config["goal_selection_strategy"]
+    n_sampled_goal = rb_config["n_sampled_goal"]
+    copy_info_dict = rb_config["copy_info_dict"]
+    
     # Choose the policy type for Dict observation space
     policy_type = "MultiInputPolicy"  
+    
+     
+    
+    model_class = SAC 
+
+    model_save_path = params.get("policy_save_name", "sac_kinova_lift_model")
+
+    """
+     env=env,
+            buffer_size=buffer_size,
+            observation_space=observation_space,
+            action_space=action_space,
+            n_envs=n_envs,
+            optimize_memory_usage=optimize_memory_usage,
+            handle_timeout_termination=handle_timeout_termination,
+            goal_selection_strategy=goal_selection_strategy,
+            n_sampled_goal=n_sampled_goal,
+            copy_info_dict=copy_info_dict  
+    """
 
     # Initialize HER with SAC model
-    model = HER(
+    model = model_class(
         policy_type,
         env,
-        model_class,
-        n_sampled_goal=n_sampled_goal,
-        goal_selection_strategy=goal_selection,
-        online_sampling=online_sampling,
-        max_episode_length=params.get("algorithm", {}).get("len_episode", 50),
+        replay_buffer_class= HerReplayBuffer,   
         verbose=1,
         **params.get("sac_kwargs", {})
     )
     # Train the agent
-    model.learn(total_timesteps=total_timesteps)
+    model.learn(1000)
     # Save the trained model
     model.save(model_save_path)
     print(f"Model saved as {model_save_path}")

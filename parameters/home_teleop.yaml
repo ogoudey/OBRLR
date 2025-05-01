@@ -2,6 +2,7 @@ other_parameters:
     description: "A different styled parameters file to go into the train2 (Spinning-up style) algorithm"
 training_parameters:
     train2: True
+    teleop: 1
     HER: True
     networks:
         policy:

@@ -18,13 +18,18 @@ import copy
 import logging
 
 torch.autograd.set_detect_anomaly(True)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 class ReplayBuffer:
-    def __init__(self):
+    def __init__(self, capacity=500):
         self.episodes = []
+        self.capacity = capacity
 
     def append(self, episode):
         self.episodes.append(episode)
+        if len(self.episodes) > self.capacity:
+            self.forget(len(self.episodes) - self.capacity)
         
     def sample_batch(self, batch_size):
         # Flatten all episodes into a list of steps
@@ -36,7 +41,7 @@ class ReplayBuffer:
         
         # Build the batch dictionary
         batch = {
-            "states": torch.stack([torch.tensor(step.state.state, dtype=torch.float32) for step in batch_steps]),
+            "states": torch.stack([torch.tensor(step.state, dtype=torch.float32) for step in batch_steps]),
             "actions": torch.stack([torch.tensor(step.action, dtype=torch.float32) for step in batch_steps]),
             "rewards": torch.stack([torch.tensor(step.reward, dtype=torch.float32) for step in batch_steps]),
             "next_states": torch.stack([torch.tensor(step.next_state, dtype=torch.float32) for step in batch_steps]),
@@ -50,7 +55,7 @@ class ReplayBuffer:
 
     def forget(self, forget_size):
         for i in range(0, forget_size):
-            self.episodes.remove(self.episodes[0])
+            self.episodes.remove(self.episodes[2]) # Avoids the "pilot" episode. Avoids the HER resampled pilot.
     
     def clean(self):
         to_del = []
@@ -79,28 +84,17 @@ class Episode:
     
 class Step:
     def __init__(self, state, action, reward, next_state, done):
-
-        if type(state) == Hindsight:
-
-            self.state = state
-        else:   # This is not HER -- i.e. hindsight w/o content
-            self.state = Hindsight(state)
+        self.state = state.detach().numpy()
         self.action = action
         self.reward = reward.detach().numpy()
         self.next_state = next_state.detach().numpy()
         self.done = done
-
-class Hindsight:
-    def __init__(self, state, pos=None, goal=None):
-        self.state = torch.tensor(state, dtype=torch.float32)
-        self.actual = pos
-        self.desired = goal
         
 
 class QNetwork(nn.Module):
     def __init__(self, params):
         
-        state_action_dim = 14 # 10 state dimension, 4 action dimension
+        state_action_dim = 17 # 13 state dimension, 4 action dimension
         q_value_dim = 1
         super(QNetwork, self).__init__()
         self.fc1 = nn.Linear(state_action_dim, params['hidden_layers']['l1'])
@@ -123,7 +117,7 @@ class QNetwork(nn.Module):
 
 class PolicyNetwork(nn.Module):
     def __init__(self, params):
-        state_dim = 10 # 3 eef location, 3 cube location, 3 delta locations, gripper
+        state_dim = 13 # 3 eef location, 3 cube location, 3 delta locations, 3 cube goal location, gripper
         action_dim = 4 # 3 dimensions, gripper
         super(PolicyNetwork, self).__init__()
         self.fc1 = nn.Linear(state_dim, params['hidden_layers']['l1'])
@@ -134,6 +128,7 @@ class PolicyNetwork(nn.Module):
         self.log_std_layer = nn.Linear(params['hidden_layers']['l2'], action_dim)
     
     def forward(self, state):
+        #print(state)
         x = F.relu(self.fc1(state))
 
         x = F.relu(self.fc2(x))
@@ -146,10 +141,7 @@ class PolicyNetwork(nn.Module):
         return mean, std
 
     def sample(self, state):
-        if type(state) == Hindsight:    # a Hindsight state
-            mean, std = self.forward(state.state)
-        else:
-            mean, std = self.forward(state)
+        mean, std = self.forward(state)
         #print("Means:", mean, "\nSTD:", std)
         normal = torch.distributions.Normal(mean, std)
         dist = torch.distributions.TransformedDistribution(normal, torch.distributions.TanhTransform(cache_size=1))
@@ -175,6 +167,8 @@ trained_critic2 = None
 
 # train method based on OpenAI's spinningup
 def train2(sim, params, args, logger):
+    
+
     ### plotting
     q_losses = []
     pi_losses = []
@@ -187,14 +181,15 @@ def train2(sim, params, args, logger):
     q1s_max = []
     q1s_min = []
     q1s_std = []
+    episode_cum_rewards = []
     ###
     
     torch.set_num_threads(torch.get_num_threads()) # Needed?
     if "configuration" in params.keys():
         print("Loading configuration", params["configuration"])
-        critic1 = load_saved_qnetwork(params, "Q1")
-        critic2 = load_saved_qnetwork(params, "Q2")
-        policy = load_saved_policy(params)
+        critic1 = load_saved_qnetwork(params, "Q1").to(device)
+        critic2 = load_saved_qnetwork(params, "Q2").to(device)
+        policy = load_saved_policy(params).to(device)
     else:
         print("Generating new configuration...")
         policy = PolicyNetwork(params['networks']['policy'])
@@ -206,7 +201,13 @@ def train2(sim, params, args, logger):
     else:
         print("Starting new replay buffer...")
         rb = ReplayBuffer()        
-    
+    ### If including a teleop episode (will this work?) ###
+    if "teleop" in params.keys():
+        for tele_episode in range(0, params["teleop"]): # only works with teleop: 1
+            e = collect_teleop_data(sim, rb, "teleop")
+            he = HER_resample(sim, e, logger, mode="final")
+            rb.append(he)
+    ###
     policy_optimizer = optim.Adam(policy.parameters(), params['networks']['policy']['lr'])
     q1_optimizer = optim.Adam(critic1.parameters(), params['networks']['q']['lr'])
     q2_optimizer = optim.Adam(critic2.parameters(), params['networks']['q']['lr'])
@@ -233,20 +234,15 @@ def train2(sim, params, args, logger):
     if "HER" in params.keys():
         if params["HER"]:
             HER = True
-            HER_distance_reward_threshold = 0.05
     
     
     steps_taken = 0
     state = sim.observe()
     e = Episode()
     max_ep_reward = -99
-    
+    cum_reward = 0
     try: 
         for step in tqdm(range(1, total_steps), position=0):
-            if HER:
-                actual = sim.eef_pos
-                goal = sim.cube_pos
-                state = Hindsight(state, actual, goal)
             action_, std = policy.sample(state)
             stds.append(std.detach().numpy())
             action = action_.detach().numpy()
@@ -256,6 +252,7 @@ def train2(sim, params, args, logger):
             action_magnitudes.append(np.linalg.norm(action))
             logger.info(f"Action {action}; Magnitude {np.linalg.norm(action)}")
             reward = sim.reward()
+            cum_reward += reward
             max_ep_reward = max(max_ep_reward, reward)
             next_state = sim.observe()
             done = sim.done
@@ -267,27 +264,14 @@ def train2(sim, params, args, logger):
             if step % len_episode == 0 or done == 1:
                 rb.append(e)
                 max_ep_rewards.append(max_ep_reward)
+                episode_cum_rewards.append(cum_reward)
                 max_ep_reward = -99
+                cum_reward = 0
+
                 if HER:
-                    logger.info(f"__HER Sampling {step}__")
-                    he = Episode()
-                    for t in range(0, len_episode):
-
-                        achieved = random.choice(range(t, len_episode))
-
-                        achieved_goal = e.steps[achieved].state.actual
-                        distance =  np.linalg.norm(e.steps[t].state.actual - achieved_goal)
-                        
-                        if distance < HER_distance_reward_threshold:
-                            HER_reward = 1
-                        else:
-                            HER_reward = -0.01
-                        logger.info(f"Future {achieved_goal}; Current actual {e.steps[t].state.actual}; Distance {distance}; Reward {HER_reward}")
-                        H_state = copy.deepcopy(e.steps[t].state)
-                        H_state.goal = achieved_goal
-                        H_next_state = copy.deepcopy(e.steps[t].next_state)
-                        he.append(H_state, e.steps[t].action, torch.tensor(HER_reward, dtype=torch.float32), torch.tensor(H_next_state, dtype=torch.float32), e.steps[t].done)
+                    he = HER_resample(sim, e, logger)
                     rb.append(he)
+                e = Episode()
                 sim.env._step_counter = 0
                 
                 sim.reset()
@@ -444,9 +428,39 @@ def train2(sim, params, args, logger):
     plt.plot(range(0, len(q1s_std)), q1s_std)
     plt.title("Q1 standard deviation")
     plt.savefig("figures/"+params["configuration_save_name"]+"_q1s_std.png")
+    plt.figure()         
+    plt.plot(range(0, len(episode_cum_rewards)), episode_cum_rewards)
+    plt.title("Cumulative reward / episode")
+    plt.savefig("figures/"+params["configuration_save_name"]+"_episode_cum_rewards.png")
     return policy
     
-
+def HER_resample(sim, e, logger, mode="random_future"):
+    logger.info(f"__HER Sampling__")
+    he = Episode()
+    for t in range(0, len(e.steps) -1):
+        if mode == "random_future":
+            future = random.randint(t+2, t + min(8, len(e.steps) - t)) -1
+        elif mode == "final":
+            future = len(e.steps) - 1
+        
+        final = e.steps[future]
+        state = final.state
+        achieved_cube_pos = state[3:6]
+        new_goal = achieved_cube_pos
+        HER_reward = sim.calculate_reward(e.steps[t].state[0:3], e.steps[t].state[3:6], new_goal, e.steps[t].action)
+        
+        
+        H_state = copy.deepcopy(e.steps[t].state)
+        H_state[10:13] = achieved_cube_pos # goal = acheived
+        H_state = torch.tensor(H_state, dtype=torch.float32)
+        H_next_state = copy.deepcopy(e.steps[t].next_state)
+        he.append(H_state, e.steps[t].action, torch.tensor(HER_reward, dtype=torch.float32), torch.tensor(H_next_state, dtype=torch.float32), final.done) # done == 1
+        
+        logger.info(f"Current {t}, {e.steps[t].state[3:6]} with goal {e.steps[t].state[10:13]}")
+        logger.info(f"Future from step {future} acheived {achieved_cube_pos};")
+        logger.info(f"Assigned {achieved_cube_pos} to current goal {H_state[10:13]};")
+        logger.info(f"EEF at {H_state[0:3]}; Cube position {H_state[3:6]}; Reward {HER_reward}")
+    return he
 
 
 
@@ -635,11 +649,12 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
 def collect_teleop_data(sim, rb, rb_save_name):
     try:
         speed = 0.1
+        sim.env = None
         sim.reset(has_renderer=True, use_sim_camera=True)
         e = Episode()
         state = sim.observe()
         while True:
-            print(sim.eef_pos, sim.cube_pos)
+            print("EEF", sim.eef_pos, "Cube", sim.cube_pos)
             action = np.array([0.0,0.0,0.0,0.0])
             trigger = input("Button: ")
             if trigger == "q":
@@ -662,19 +677,23 @@ def collect_teleop_data(sim, rb, rb_save_name):
             sim.act(action, w_video=True)
             reward = sim.reward()   
             next_state = sim.observe()
+            done = sim.done
             e.append(state, action, reward, next_state, 0)
-            print("State:", state, "\nAction:", action, "\nReward:", reward, "\nState':", next_state, "\n")         
+            if done:
+                break
+                
+            print("State:", state, "\nAction:", action, "\nReward:", reward, "\nState':", next_state, "\nDone?", done)         
             state = next_state
             
             
         
     except KeyboardInterrupt:
-        sim.reset()
-        # Append episode after it's decided it's done with `^C` #
-        rb.append(e)
-        # And save #
-        rb.save(rb_save_name)
-
+        break
+    sim.env = None
+    sim.reset()
+    rb.append(e)
+    rb.save(rb_save_name)
+    return e
 def test(sim, trained_policy, num_episodes=100, render=True):
     import time
     sim.has_renderer = True
