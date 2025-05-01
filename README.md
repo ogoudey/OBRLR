@@ -11,7 +11,7 @@ As of 4/30/25, `python3 main.py --params parameters/home` is the most likely to 
 ```
 $ ./batch_train <params1> <params2> <params3> <params4>...
 ```
-will train models in a sequence.
+will train models in a sequence. Useful if training over a long period of time and training times are short-ish.
 
 ## Model + ReplayBuffer saving
 All replay buffers will be saved after data collection to replays/<rb_save_name>, which is specified in parameter files; and all networks (policy, Q1, Q2) are saved in a folder configurations/<configuration_save_name>, which is also in the parameters.
