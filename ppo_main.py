@@ -38,8 +38,8 @@ if __name__ == "__main__":
         from real import real # irl robot stuff
         # unused in current algorithm
 
-    import interface
-    sim = interface.Sim(params["training_parameters"], headless=args.headless)
+    import sb_interface
+    sim = sb_interface.Sim(params["training_parameters"])
     
     import soft_actor_critic as sac # includes policy network
 
