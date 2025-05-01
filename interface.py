@@ -101,11 +101,14 @@ class Sim:
         
         # Take initial step to get obs
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
-        # form initial state
-        self.form_state(obs)
         
         self.initial_cube = obs['cube_pos']
         self.initial_goal = np.array([self.initial_cube[0], self.initial_cube[1], self.initial_cube[2] + 0.05]) # The actual goal
+        
+        # form initial state
+        self.form_state(obs)
+        
+        
         
         
         
@@ -113,7 +116,7 @@ class Sim:
         
         self.mem_reward = torch.tensor(self.raise_reward(self.eef_pos, self.initial_cube, self.initial_goal), dtype=torch.float32)
 
-    def form_state(self, obs):
+    def form_state(self, obs, has_renderer=False):
         # state 0:3
         site_name = self.env.robots[0].gripper['right'].important_sites["grip_site"]
         eef_site_id = self.env.sim.model.site_name2id(site_name)
@@ -139,7 +142,7 @@ class Sim:
         np_concatenation = np.concatenate((self.eef_pos, detection, delta, current_grasp, self.initial_goal))
         
         # tensor for networks
-        self.state = torch.cat(np_concatenation)
+        self.state = torch.tensor(np_concatenation, dtype=torch.float32)
         
         
         
