@@ -667,7 +667,7 @@ def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, 
                 print(reward.item())
                 #input("Proceed?")
             
-        sim.reset(has_renderer=False)
+        sim.reset(has_renderer=True)
         
         # Append each episode #
         rb.append(e)

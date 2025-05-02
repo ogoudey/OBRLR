@@ -1,7 +1,7 @@
 other_parameters:
     description: "A different styled parameters file to go into the train2 (Spinning-up style) algorithm with HER"
 training_parameters:
-    teleop: 1  
+      
     train2: True
     HER: True
     bonus: 1
@@ -17,9 +17,9 @@ training_parameters:
                 l1: 256
                 l2: 256
     algorithm:    
-        num_iterations: 2000
+        num_iterations: 200000
         human: False
-        len_episode: 500
+        len_episode: 200
         batch_size: 256
         gamma: 0.99
         alpha: 0.2
