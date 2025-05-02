@@ -102,6 +102,8 @@ class Sim:
         
         self.env.sim.data.set_joint_qpos(self.env.model.mujoco_objects[0].joints[0], np.array([0.0,0.0,0.822,1.0,0.0,0.0,0.0]))
 
+        self.env.sim.data.qvel[:] = 0.0
+        self.env.sim.data.qacc[:] = 0.0
 
         
         # Take initial step to get obs
