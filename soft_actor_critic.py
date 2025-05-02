@@ -151,10 +151,12 @@ class PolicyNetwork(nn.Module):
         mean, std = self.forward(state)
         #print("Means:", mean, "\nSTD:", std)
         normal = torch.distributions.Normal(mean, std)
-        dist = torch.distributions.TransformedDistribution(normal, torch.distributions.TanhTransform(cache_size=1))
-        action = dist.rsample()
-        #print("Mean:", mean, "Std:", std, "Action:", action)
-        log_prob = dist.log_prob(action).sum(dim=-1, keepdim=True)
+        z = normal.rsample()
+        action = torch.tanh(z)
+
+        
+        log_prob = normal.log_prob(z) - torch.log(1 - action.pow(2) + 1e-6)
+        log_prob = log_prob.sum(dim=-1, keepdim=True)
         return action, log_prob
         
     def deterministic_action(self, state):
@@ -257,7 +259,7 @@ def train2(sim, params, args, logger):
     try: 
         for step in tqdm(range(1, total_steps), position=0):
             action_, std = policy.sample(state)
-            stds.append(std.detach().numpy())
+            stds.append(std.item())
             action = action_.detach().numpy()
             logger.info(f"____Taking action {step}___")
             sim.act(action)
@@ -302,6 +304,7 @@ def train2(sim, params, args, logger):
                     batch = rb.sample_batch(params['algorithm']['batch_size'])
                     states = batch['states']
                     actions = batch['actions']
+                    #print(f"Action range: {actions.min().item()} to {actions.max().item()}")
                     rewards = batch['rewards']
                     next_states = batch['next_states']
                     done = batch['done'].float() # Recommended to cast this to float
