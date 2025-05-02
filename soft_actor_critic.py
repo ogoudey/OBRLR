@@ -383,7 +383,7 @@ def train2(sim, params, args, logger):
                     
                     ### plotting ###
 
-                    if step % 100 === 0:
+                    if step % 100 == 0:
                         q_losses.append(q_loss.detach().numpy())
                         pi_losses.append(policy_loss.detach().numpy())
                     
