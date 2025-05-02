@@ -32,7 +32,7 @@ class Sim:
         self.env, self.mem_reward, self.state, self.done = None, None, None, 0
         self.eef_pos, self.cube_pos = None, None
         # Initialize (reset)
-        self.has_renderer = True
+        self.has_renderer = False
         
         # Vision
         self.sim_vision = sim_vision.SimVision(use_sim_camera=False) # Change to turn simulated YOLO
