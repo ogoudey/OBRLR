@@ -38,7 +38,7 @@ class Sim:
             env_name="Lift",
             robots="Kinova3",
             has_renderer=self.has_renderer,
-            has_offscreen_renderer=False,
+            has_offscreen_renderer=True,
             use_camera_obs=self.use_camera_obs,
             horizon=1000,
             camera_names="sideview" if self.use_camera_obs else [],
@@ -104,13 +104,25 @@ class Sim:
         return obs, reward, terminated, info
 
     def _compute_reward(self, obs, action):
-        z_diff = obs['cube_pos'][2] - self.initial_cube_z
-        dist = np.linalg.norm(obs['robot0_eef_pos'] - obs['cube_pos'])
+        cube_pos = obs['cube_pos']
+        eef_pos = obs['robot0_eef_pos']
+        gripper_to_cube = obs['gripper_to_cube_pos']
+        z_diff = cube_pos[2] - self.initial_cube_z
+        dist = np.linalg.norm(gripper_to_cube)
 
-        reward = self.reward_for_raise if (z_diff > 0.01 and dist < 0.04) else -0.1
-        if self.use_cost and reward != self.reward_for_raise:
+        # ----- reward components -----
+        r_lift = float(z_diff > 0.01 and dist < 0.04) * self.reward_for_raise
+        r_approach = 1.0 - np.tanh(5.0 * dist)  # closer = ~1, far = ~0
+        r_align_z = np.exp(-20 * abs(gripper_to_cube[2]))  # closer in Z
+
+        reward = r_lift + 0.5 * r_approach + 0.3 * r_align_z
+
+        # ----- optional cost on large actions -----
+        if self.use_cost and r_lift == 0:
             reward -= self.cost_scale * np.linalg.norm(action)
+
         return reward
+
 
     def reward(self):
         return torch.tensor(self.mem_reward, dtype=torch.float32)

@@ -41,7 +41,7 @@ if __name__ == "__main__":
     import sb_interface
     sim = sb_interface.Sim(params["training_parameters"])
     
-    import soft_actor_critic as sac # includes policy network
+    #import soft_actor_critic as sac # includes policy network
 
     from ppo_training import train_ppo, test_ppo
     
