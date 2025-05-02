@@ -55,12 +55,12 @@ def train_ppo(sim, params, args):
     model.save(params.get("policy_save_name", "ppo_policy"))
     return model
 
-def test_ppo(sim, model_path="models/ppo_model.zip"):
+def test_ppo(sim, model_path="ppo_policy.zip"):
     env = DummyVecEnv([lambda: SimWrapper(sim)])
     model = PPO.load(model_path)
 
     obs = env.reset()
-    for _ in range(100):
+    while True:
         env.render()
         action, _ = model.predict(obs)
         obs, reward, done, _ = env.step(action)
