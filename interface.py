@@ -206,14 +206,13 @@ class Sim:
     def raise_reward(self, eef_pos, cube_pos, goal):
         threshold = 0.02
         condition_threshold = 0.05
-        #print("Reward calculation:", cube_pos[2], "-", self.initial_cube_z, "=", z_diff, "> 0.01? (1 or 0.1) AND...")
-        #print("\teef_pos - cube_pos == X:", eef_pos, "-", cube_pos, "=", np.linalg.norm((eef_pos - cube_pos)), "< 0.04?")
+        
         condition = np.linalg.norm((cube_pos - eef_pos)) < condition_threshold
         delta = np.linalg.norm((goal - cube_pos))
         if delta < threshold and condition:
             return self.reward_for_raise
         else:
-            return -0.1
+            return 0.0
         
     def take_photo(self):
         # For gathering data

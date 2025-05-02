@@ -1,7 +1,6 @@
 other_parameters:
     description: "A different styled parameters file to go into the train2 (Spinning-up style) algorithm with HER"
 training_parameters:
-      
     train2: True
     HER: True
     bonus: 1
