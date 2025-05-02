@@ -108,7 +108,7 @@ class Sim:
         obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
         
         self.initial_cube = obs['cube_pos']
-        print(obs['cube_pos'])
+
         self.initial_goal = np.array([self.initial_cube[0], self.initial_cube[1], self.initial_cube[2] + 0.05]) # The actual goal
         
         # form initial state

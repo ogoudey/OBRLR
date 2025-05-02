@@ -18,18 +18,24 @@ import copy
 import logging
 
 torch.autograd.set_detect_anomaly(True)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class ReplayBuffer:
     def __init__(self, capacity=500):
         self.episodes = []
         self.capacity = capacity
+        self.protected_episodes = 0
 
     def append(self, episode):
         self.episodes.append(episode)
         if len(self.episodes) > self.capacity:
             self.forget(len(self.episodes) - self.capacity)
+    
+    def left_append(self, episode):
+        self.episodes.insert(0, episode)
+        self.protected_episodes += 1
+        
         
     def sample_batch(self, batch_size):
         # Flatten all episodes into a list of steps
@@ -55,7 +61,7 @@ class ReplayBuffer:
 
     def forget(self, forget_size):
         for i in range(0, forget_size):
-            self.episodes.remove(self.episodes[2]) # Avoids the "pilot" episode. Avoids the HER resampled pilot.
+            self.episodes.remove(self.episodes[self.protected_episodes]) # Avoids the "pilot" episode. Avoids the HER resampled pilot.
     
     def clean(self):
         to_del = []
@@ -184,12 +190,12 @@ def train2(sim, params, args, logger):
     episode_cum_rewards = []
     ###
     
-    torch.set_num_threads(torch.get_num_threads()) # Needed?
+
     if "configuration" in params.keys():
         print("Loading configuration", params["configuration"])
-        critic1 = load_saved_qnetwork(params, "Q1").to(device)
-        critic2 = load_saved_qnetwork(params, "Q2").to(device)
-        policy = load_saved_policy(params).to(device)
+        critic1 = load_saved_qnetwork(params, "Q1")
+        critic2 = load_saved_qnetwork(params, "Q2")
+        policy = load_saved_policy(params)
     else:
         print("Generating new configuration...")
         policy = PolicyNetwork(params['networks']['policy'])
@@ -198,6 +204,9 @@ def train2(sim, params, args, logger):
     if "replay_buffer" in params.keys():
         print("Loading replay buffer", params["replay_buffer"])
         rb = load_replay_buffer(params["replay_buffer"])
+        if "teleop" in params["replay_buffer"]: # A way to emphasize the demonstration (will be emhpasiized if 'teleop' is in the rb name)
+            he = HER_resample(sim, rb.episodes[0], logger, mode="final")
+            rb.left_append(he)
     else:
         print("Starting new replay buffer...")
         rb = ReplayBuffer()        
@@ -205,8 +214,11 @@ def train2(sim, params, args, logger):
     if "teleop" in params.keys():
         for tele_episode in range(0, params["teleop"]): # only works with teleop: 1
             e = collect_teleop_data(sim, rb, "teleop")
+            if "bonus" in params.keys():
+                give_bonus(e, params["bonus"])
+            rb.left_append(e)
             he = HER_resample(sim, e, logger, mode="final")
-            rb.append(he)
+            rb.left_append(he)
     ###
     policy_optimizer = optim.Adam(policy.parameters(), params['networks']['policy']['lr'])
     q1_optimizer = optim.Adam(critic1.parameters(), params['networks']['q']['lr'])
@@ -262,7 +274,11 @@ def train2(sim, params, args, logger):
             
 
             if step % len_episode == 0 or done == 1:
-                rb.append(e)
+                if done == 1 and "bonus" in params.keys():
+                    give_bonus(e, params["bonus"], 30) # 30 is 'average' of demonstration
+                    rb.left_append(e)
+                else:
+                    rb.append(e)
                 max_ep_rewards.append(max_ep_reward)
                 episode_cum_rewards.append(cum_reward)
                 max_ep_reward = -99
@@ -287,19 +303,21 @@ def train2(sim, params, args, logger):
                     actions = batch['actions']
                     rewards = batch['rewards']
                     next_states = batch['next_states']
-                    done = batch['done']
+                    done = batch['done'].float() # Recommended to cast this to float
                     logger.info(f"_____Q Network Update {step}_____")
                     state_actions = torch.cat((states, actions), dim=-1)
                     q1_current = critic1(state_actions)
                     q2_current = critic2(state_actions)
-                    q1s.append(q1_current.mean().item()) # for plotting
-                    q2s.append(q2_current.mean().item())
+                    
                     
                     plottable = q1_current.detach().cpu().numpy()  # shape (batch_size, 1)
-                    q1s_mean.append(plottable.mean())
-                    q1s_max.append(plottable.max())
-                    q1s_min.append(plottable.min())
-                    q1s_std.append(plottable.std())
+                    if step % 100 == 0:
+                        q1s_mean.append(plottable.mean())
+                        q1s_max.append(plottable.max())
+                        q1s_min.append(plottable.min())
+                        q1s_std.append(plottable.std())
+                        q1s.append(q1_current.mean().item()) # for plotting
+                        q2s.append(q2_current.mean().item())
 
                     logger.info(f"Q1 {q1_current.detach().numpy().mean()}; Q2 {q2_current.detach().numpy().mean()}")   
                     logger.info(f"Mean reward {rewards.detach().numpy().mean()}; 1 reward? {np.any(rewards.numpy() == 1)}")
@@ -315,11 +333,11 @@ def train2(sim, params, args, logger):
                         # clamp the change around the reward scale
                         #target_q = torch.clamp(raw_target, -1.0, 1.0)   
                     
-                    logger.info(f"Q1 next {q1_next.detach().numpy().mean()}; Q2 next {target_q.detach().numpy().mean()}") 
+                    logger.info(f"Q1 next {q1_next.mean().item()}; Q2 next {q2_next.mean().item()}")
                     q1_loss = F.mse_loss(q1_current, target_q)
                     q2_loss = F.mse_loss(q2_current, target_q)
                     q_loss = q1_loss + q2_loss # Idea from Spinningup
-                    logger.info(f"Q1 Loss {q1_loss.detach().numpy().mean()}; Q2 Loss {q2_loss.detach().numpy().mean()}") 
+                    logger.info(f"Q1 Loss {q1_loss.mean().item()}; Q2 Loss {q2_loss.detach().numpy().mean()}") 
 
                     # Here spinning up does loss_q = lossq1 + lossq2
                     
@@ -359,15 +377,15 @@ def train2(sim, params, args, logger):
                     logger.info(f"Policy Loss {policy_loss.detach().numpy().mean()};")
                     policy_optimizer.zero_grad()
                     policy_loss.backward()
-                    torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
+                    torch.nn.utils.clip_grad_norm_(policy.parameters(), 5.0)
                     policy_optimizer.step()
                     
                     
                     ### plotting ###
 
-                    
-                    q_losses.append(q_loss.detach().numpy())
-                    pi_losses.append(policy_loss.detach().numpy())
+                    if step % 100 === 0:
+                        q_losses.append(q_loss.detach().numpy())
+                        pi_losses.append(policy_loss.detach().numpy())
                     
                 
                 
@@ -454,7 +472,8 @@ def HER_resample(sim, e, logger, mode="random_future"):
         H_state[10:13] = achieved_cube_pos # goal = acheived
         H_state = torch.tensor(H_state, dtype=torch.float32)
         H_next_state = copy.deepcopy(e.steps[t].next_state)
-        he.append(H_state, e.steps[t].action, torch.tensor(HER_reward, dtype=torch.float32), torch.tensor(H_next_state, dtype=torch.float32), final.done) # done == 1
+        H_next_state[10:13] = achieved_cube_pos # goal = acheived
+        he.append(H_state, e.steps[t].action, torch.tensor(HER_reward, dtype=torch.float32), torch.tensor(H_next_state, dtype=torch.float32), 0) # done = 0
         
         logger.info(f"Current {t}, {e.steps[t].state[3:6]} with goal {e.steps[t].state[10:13]}")
         logger.info(f"Future from step {future} acheived {achieved_cube_pos};")
@@ -462,7 +481,12 @@ def HER_resample(sim, e, logger, mode="random_future"):
         logger.info(f"EEF at {H_state[0:3]}; Cube position {H_state[3:6]}; Reward {HER_reward}")
     return he
 
-
+def give_bonus(episode, bonus, steps_from_done=None):
+    if not steps_from_done:
+        steps_from_done = len(episode.steps)
+    for step in range(len(episode.steps) - 1, len(episode.steps) - 1 - steps_from_done): # Excluding the last step
+        episode.steps[step].reward += bonus
+    
 
 
 def train(sim, params, args):
@@ -688,7 +712,7 @@ def collect_teleop_data(sim, rb, rb_save_name):
             
         
     except KeyboardInterrupt:
-        break
+        pass
     sim.env = None
     sim.reset()
     rb.append(e)
