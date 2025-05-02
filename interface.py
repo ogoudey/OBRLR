@@ -42,7 +42,7 @@ class Sim:
         # FOR RAISE REWARD #
         
         #
-        has_renderer = False
+        has_renderer = self.has_renderer
         use_sim_camera = False
         if "human" in params.keys():
             if bool(params["human"]):
@@ -67,7 +67,7 @@ class Sim:
         
         
           
-    def reset(self, has_renderer=False, use_sim_camera=False):
+    def reset(self, has_renderer=True, use_sim_camera=False):
 
         if not self.env:
             print("Full reset!")
@@ -104,6 +104,7 @@ class Sim:
 
         self.env.sim.data.qvel[:] = 0.0
         self.env.sim.data.qacc[:] = 0.0
+        self.env.sim.forward()
 
         
         # Take initial step to get obs
