@@ -144,6 +144,7 @@ class PolicyNetwork(nn.Module):
         log_std = self.log_std_layer(x)
         log_std = torch.clamp(log_std, min=-5, max=2)
         std = torch.exp(log_std)
+       
         return mean, std
 
     def sample(self, state):
@@ -489,7 +490,7 @@ def give_bonus(episode, bonus, steps_from_done=None):
     
 
 
-def train(sim, params, args):
+def train(sim, params, args): # deprecated!
     if "configuration" in params.keys():
         print("Loading configuration", params["configuration"])
         critic1 = load_saved_qnetwork(params, "Q1")
