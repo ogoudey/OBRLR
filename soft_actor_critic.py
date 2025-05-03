@@ -191,7 +191,7 @@ def form_state(sim, params):
     
         if "cube_goal_pos" in params:    
             state = np.concatenate((state, sim.initial_cube_goal()))
-        print(state)
+
         # tensor for networks
         return torch.tensor(state, dtype=torch.float32)
 

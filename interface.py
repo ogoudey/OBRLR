@@ -52,13 +52,7 @@ class Sim:
         
     def compose(self, params):
     
-        def set_gripper(env, amount):
-            robot = env.robots[0]
-            target = robot.gripper['right'].format_action(np.array([amount]))
-            for name, q in zip(robot.gripper['right'].joints, target):
-                jid = env.sim.model.joint_name2id(name)
-                env.sim.data.qpos[env.sim.model.jnt_qposadr[jid]] = q
-            env.sim.forward()
+        
             
         self.env.sim.data.qvel[:] = 0.0
         self.env.sim.data.qacc[:] = 0.0
@@ -70,7 +64,6 @@ class Sim:
             desired_joint_positions = [0.0, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
         elif "midway_eef" in params:
             desired_joint_positions = [math.pi, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
-            robot = env.robots[0]
             env.sim.data.set_joint_qpos(env.model.mujoco_objects[0].joints[0], np.array([0.0,0.0,0.822,1.0,0.0,0.0,0.0]))
             desired_joint_positions = [-0.06872584,  1.095,  0.0,  1.43028395,  0.00620798,  0.57827479, -math.pi/2]  
         self.env.robots[0].set_robot_joint_positions(desired_joint_positions)      
@@ -79,9 +72,9 @@ class Sim:
 
         # Gripper
         if "reset_eef" in params:
-            set_gripper(env, -1.0)
+            self.set_gripper(self.env, -1.0)
         elif "midway_eef" in params:
-            set_gripper(env, 1.0)
+            self.set_gripper(self.env, 1.0)
 
         # Take initial step to get obs for elsewhere and for initial_cube
         self.obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
@@ -95,7 +88,13 @@ class Sim:
         
         # form initial state
         
-
+    def set_gripper(self, env, amount):
+        robot = env.robots[0]
+        target = robot.gripper['right'].format_action(np.array([amount]))
+        for name, q in zip(robot.gripper['right'].joints, target):
+            jid = env.sim.model.joint_name2id(name)
+            env.sim.data.qpos[env.sim.model.jnt_qposadr[jid]] = q
+        env.sim.forward()
         
         
         
@@ -131,7 +130,7 @@ class Sim:
         return self.eef_pos
 
     def get_cube_pos(self):
-        detection = self.sim_vision.detect(self.obs, self.env, w_video=False)  
+        detection = self.sim_vision.detect(self.obs, w_video=False)  
         self.cube_pos = detection
         return self.cube_pos
 
