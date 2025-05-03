@@ -51,7 +51,15 @@ class Sim:
         print("Full reset!")
         
     def compose(self, params):
-        #common
+    
+        def set_gripper(env, amount):
+            robot = env.robots[0]
+            target = robot.gripper['right'].format_action(np.array([amount]))
+            for name, q in zip(robot.gripper['right'].joints, target):
+                jid = env.sim.model.joint_name2id(name)
+                env.sim.data.qpos[env.sim.model.jnt_qposadr[jid]] = q
+            env.sim.forward()
+            
         self.env.sim.data.qvel[:] = 0.0
         self.env.sim.data.qacc[:] = 0.0
         
