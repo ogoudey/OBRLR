@@ -41,7 +41,9 @@ Example parameters file
 
 Is there a way to logically say what's in these files? - Planning, FUTURE PROJECT**
 ** and there's an executive branch to the biological reward system...             
-                    
+
+A study of "task" construction. "Objective", "goal", "plan"
+                
 Executor:
     generalized network or (simpler) loading all beforehand and then sequencing them based on done
 
@@ -55,6 +57,6 @@ make form_state take params
 random note: the Q-network just extends the state by the action
 can we really say what should be tracked in these sub-goal problems?
     
-
+PRoposal: An objective is defined by what's IN it. (Russel's Paradox?)
         
     

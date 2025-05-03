@@ -125,35 +125,30 @@ class Sim:
         
         self.mem_reward = torch.tensor(self.raise_reward(self.eef_pos, self.initial_cube, self.initial_goal), dtype=torch.float32)
 
-    def form_state(self, obs, has_renderer=False):
-        # state 0:3
+    
+        
+    def eef_pos(self):
         site_name = self.env.robots[0].gripper['right'].important_sites["grip_site"]
         eef_site_id = self.env.sim.model.site_name2id(site_name)
         self.eef_pos = self.env.sim.data.site_xpos[eef_site_id]
-        # state 3:6
-        detection = self.sim_vision.detect(obs, self.env, w_video=has_renderer)  
-        self.cube_pos = detection
-        # state 6:9      
-        delta = detection - self.eef_pos
-        # state 9
-        gripper_pos = obs["robot0_gripper_qpos"]    
-        opening = gripper_pos.mean()
-        current_grasp = np.array([opening])
-        # state 10:13
-        goal = self.initial_goal
-        
-        #print(pp)
-        #print(_3d_positions)
-        #print(distance)
-        #print(current_grasp)
-        #print(goal)
+        return self.eef_pos
 
-        np_concatenation = np.concatenate((self.eef_pos, detection, delta, current_grasp, self.initial_goal))
-        
-        # tensor for networks
-        self.state = torch.tensor(np_concatenation, dtype=torch.float32)
-        
-        
+    def cube_pos(self):
+        detection = self.sim_vision.detect(self.obs, self.env, w_video=False)  
+        self.cube_pos = detection
+        return self.cube_pos
+    
+    def eef_cube_displacement(self):
+        delta = self.cube_pos - self.eef_pos
+    
+    def current_grasp(self):
+        gripper_pos = self.obs["robot0_gripper_qpos"]  # CHANGE!!  (?)
+        opening = gripper_pos.mean()
+        print("Check that this moves, and normalize:", opening)
+        return np.array([opening])
+
+    def initial_cube_goal(self):
+        return self.initial_cube_goal()
         
     def observe(self):
         state = self.state
@@ -163,7 +158,7 @@ class Sim:
     def act(self, action, w_video=False):
         standardized_action = [action[0], action[1], action[2], 0, 0, 0, action[3]]
         #print("Standardized action:", standardized_action)
-        obs, _, _, _ = self.env.step(standardized_action)
+        self.obs, _, _, _ = self.env.step(standardized_action)
         
         self.form_state(obs) # form state
 

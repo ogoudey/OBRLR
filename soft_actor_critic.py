@@ -100,7 +100,7 @@ class Step:
 class QNetwork(nn.Module):
     def __init__(self, params):
         
-        state_action_dim = 17 # 13 state dimension, 4 action dimension
+        state_action_dim = params["state_dim"] + params["action_dim"] # 13 state dimension, 4 action dimension
         q_value_dim = 1
         super(QNetwork, self).__init__()
         self.fc1 = nn.Linear(state_action_dim, params['hidden_layers']['l1'])
@@ -123,8 +123,8 @@ class QNetwork(nn.Module):
 
 class PolicyNetwork(nn.Module):
     def __init__(self, params):
-        state_dim = 13 # 3 eef location, 3 cube location, 3 delta locations, 3 cube goal location, gripper
-        action_dim = 4 # 3 dimensions, gripper
+        state_dim = params["state_dim"] # 3 eef location, 3 cube location, 3 delta locations, 3 cube goal location, gripper (is the max)
+        action_dim = params["action_dim"] # 3 dimensions, gripper (is the max)
         super(PolicyNetwork, self).__init__()
         self.fc1 = nn.Linear(state_dim, params['hidden_layers']['l1'])
         self.fc2 = nn.Linear(params['hidden_layers']['l1'], params['hidden_layers']['l2'])
@@ -164,6 +164,28 @@ class PolicyNetwork(nn.Module):
         action = torch.tanh(mean)
         return action
 
+def form_state(self, params):
+        # Order matters for internal sim state
+        state = np.array([])
+        if "eef_pos" in params:
+            np.concatenate(state, sim.eef_pos())
+        # REAL GET EEF_POS
+        
+        if "cube_pos" in params:
+            state = np.concatenate((state, sim.cube_pos()))
+        
+        if "eef_cube_displacement" in params:
+            state = np.concatenate((state, sim.eef_cube_displacement()))
+        
+        if "current_grasp" in params:
+            state = np.concatenate((state, sim.current_grasp()))
+    
+        if "cube_goal_pos" in params:    
+            state = np.concatenate((state, sim.initial_cube_goal()))
+
+        # tensor for networks
+        return torch.tensor(state, dtype=torch.float32)
+
 
 
 #       Control Scripts       #
@@ -175,9 +197,11 @@ trained_critic1 = None
 trained_critic2 = None
 
 # train method based on OpenAI's spinningup
-def train2(sim, params, args, logger):
+def train2(params, logger):
+    import interface
+    sim = interface.Sim() # will tell the sim what initial internal state to hold on to
+    logger = setup_logger()
     
-
     ### plotting
     q_losses = []
     pi_losses = []
@@ -193,17 +217,13 @@ def train2(sim, params, args, logger):
     episode_cum_rewards = []
     ###
     
+    network_parameters = params["networks"]
 
-    if "configuration" in params.keys():
-        print("Loading configuration", params["configuration"])
-        critic1 = load_saved_qnetwork(params, "Q1")
-        critic2 = load_saved_qnetwork(params, "Q2")
-        policy = load_saved_policy(params)
-    else:
-        print("Generating new configuration...")
-        policy = PolicyNetwork(params['networks']['policy'])
-        critic1 = QNetwork(params['networks']['q'])
-        critic2 = QNetwork(params['networks']['q'])
+    print("Generating new configuration...")
+    policy = PolicyNetwork(network_parameters)
+    critic1 = QNetwork(network_parameters)
+    critic2 = QNetwork(network_parameters)
+    
     if "replay_buffer" in params.keys():
         print("Loading replay buffer", params["replay_buffer"])
         rb = load_replay_buffer(params["replay_buffer"])
@@ -223,6 +243,10 @@ def train2(sim, params, args, logger):
             he = HER_resample(sim, e, logger, mode="final")
             rb.left_append(he)
     ###
+    if "HER" in params.keys():
+        if params["HER"]:
+            HER = True
+    
     policy_optimizer = optim.Adam(policy.parameters(), params['networks']['policy']['lr'])
     q1_optimizer = optim.Adam(critic1.parameters(), params['networks']['q']['lr'])
     q2_optimizer = optim.Adam(critic2.parameters(), params['networks']['q']['lr'])
@@ -246,13 +270,12 @@ def train2(sim, params, args, logger):
     full_sim_reset_every = 50000
     HER = False
     
-    if "HER" in params.keys():
-        if params["HER"]:
-            HER = True
+    
+    if "pi" in 
     
     
     steps_taken = 0
-    state = sim.observe()
+    state = form_state(pi["inputs"])
     e = Episode()
     max_ep_reward = -99
     cum_reward = 0
@@ -792,11 +815,9 @@ def safe_save_model(model, configuration_name, model_type, save_state_dict=True)
     os.replace(temp_filename, filename)
     #print(f"Model successfully saved to {filename}")  
     
-def setup_logger(params, params_file_name):
-    if "configuration" in params.keys():
-        experiment_name = params["configuration"] + "2" + params["configuration_save_name"]
-    else:
-        experiment_name = params["configuration_save_name"]
+def setup_logger(params):
+    
+    experiment_name = "WIP"
     logger = logging.getLogger(experiment_name)  
     
     logger.setLevel(logging.INFO)
