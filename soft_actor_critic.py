@@ -1,3 +1,9 @@
+### Provides RL algorithms for learning components of the objective ###
+
+# Provides helpers to carry out objective "check"
+
+
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -92,7 +98,7 @@ class Step:
     def __init__(self, state, action, reward, next_state, done):
         self.state = state.detach().numpy()
         self.action = action
-        self.reward = reward.detach().numpy()
+        self.reward = reward
         self.next_state = next_state.detach().numpy()
         self.done = done
         
@@ -164,28 +170,55 @@ class PolicyNetwork(nn.Module):
         action = torch.tanh(mean)
         return action
 
-def form_state(self, params):
+def form_state(sim, params):
         # Order matters for internal sim state
         state = np.array([])
         if "eef_pos" in params:
-            np.concatenate(state, sim.eef_pos())
+            state = np.concatenate((state, sim.get_eef_pos()))
         # REAL GET EEF_POS
         
         if "cube_pos" in params:
-            state = np.concatenate((state, sim.cube_pos()))
+            state = np.concatenate((state, sim.get_cube_pos()))
         
         if "eef_cube_displacement" in params:
             state = np.concatenate((state, sim.eef_cube_displacement()))
         
+        if "cube_cube_displacement" in params:
+            state = np.concatenate((state, sim.cube_cube_displacement()))
+        
         if "current_grasp" in params:
-            state = np.concatenate((state, sim.current_grasp()))
+            state = np.concatenate((state, sim.get_current_grasp()))
     
         if "cube_goal_pos" in params:    
             state = np.concatenate((state, sim.initial_cube_goal()))
-
+        print(state)
         # tensor for networks
         return torch.tensor(state, dtype=torch.float32)
 
+def form_action(action, params):
+    # Must fit into the robosuite 'port'
+    simized_action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    if "eef_desired_move" in params:
+        simized_action[0:3] = action[0:3]
+    if "gripper_move" in params:
+        simized_action[6] = action[3]
+    return simized_action
+
+def form_reward(sim, params):
+    
+    reward = 0.0
+    if "k_cube_eef_displacement" in params.keys():
+        reward += sim.k_cube_eef_displacement(params["k_cube_eef_displacement"])
+    elif "k_cube_cube_displacement" in params.keys():
+        reward += sim.k_cube_cube_displacement(params["k_cube_cube_displacement"])
+    return reward
+# Helpers #
+
+def reset_eef(composition):
+    # composition is what's in common of training and real
+    sim = interface.Sim(params['reward'], params['teleop']) # will tell the sim what initial internal state to hold on to
+    sim.compose(composition)
+#
 
 
 #       Control Scripts       #
@@ -197,10 +230,12 @@ trained_critic1 = None
 trained_critic2 = None
 
 # train method based on OpenAI's spinningup
-def train2(params, logger):
+def train(params, composition):
     import interface
-    sim = interface.Sim() # will tell the sim what initial internal state to hold on to
-    logger = setup_logger()
+    sim = interface.Sim(params['teleop']) # will tell the sim what initial internal state to hold on to
+    sim.compose(composition)
+    
+    logger = setup_logger(None)
     
     ### plotting
     q_losses = []
@@ -247,9 +282,9 @@ def train2(params, logger):
         if params["HER"]:
             HER = True
     
-    policy_optimizer = optim.Adam(policy.parameters(), params['networks']['policy']['lr'])
-    q1_optimizer = optim.Adam(critic1.parameters(), params['networks']['q']['lr'])
-    q2_optimizer = optim.Adam(critic2.parameters(), params['networks']['q']['lr'])
+    policy_optimizer = optim.Adam(policy.parameters(), params['networks']['lr'])
+    q1_optimizer = optim.Adam(critic1.parameters(), params['networks']['lr'])
+    q2_optimizer = optim.Adam(critic2.parameters(), params['networks']['lr'])
     
     # Make 'target' networks 
     qnetwork1 = copy.deepcopy(critic1)
@@ -271,11 +306,11 @@ def train2(params, logger):
     HER = False
     
     
-    if "pi" in 
+    pi = params['pi']
     
     
     steps_taken = 0
-    state = form_state(pi["inputs"])
+    state = form_state(sim, pi["inputs"])
     e = Episode()
     max_ep_reward = -99
     cum_reward = 0
@@ -285,14 +320,14 @@ def train2(params, logger):
             stds.append(std.item())
             action = action_.detach().numpy()
             logger.info(f"____Taking action {step}___")
-            sim.act(action)
+            sim.act(form_action(action, pi["inputs"]))
             logger.info(f"Standard deviation {std}")
             action_magnitudes.append(np.linalg.norm(action))
             logger.info(f"Action {action}; Magnitude {np.linalg.norm(action)}")
-            reward = sim.reward()
+            reward = form_reward(sim, params["reward"])
             cum_reward += reward
             max_ep_reward = max(max_ep_reward, reward)
-            next_state = sim.observe()
+            next_state = form_state(sim, pi["inputs"])
             done = sim.done
             e.append(state, action, reward, next_state, done)
             state = next_state
@@ -314,13 +349,11 @@ def train2(params, logger):
                     he = HER_resample(sim, e, logger)
                     rb.append(he)
                 e = Episode()
-                sim.env._step_counter = 0
-                
-                sim.reset()
-                state = sim.observe()
-                if step % full_sim_reset_every == 0:
-                    sim.env = None
-                    sim.reset()
+                del sim
+                sim = interface.Sim() # will tell the sim what initial internal state to hold on to
+                sim.compose(composition)
+                state = form_state(sim, pi["inputs"])
+
                 
             if step > gradient_after and step % gradient_every == 0:
                 for grad in range(0, gradient_every):
@@ -420,63 +453,67 @@ def train2(params, logger):
                 # Saving models after training #     
                 global trained_policy
                 trained_policy = policy
-                safe_save_model(trained_policy, params["configuration_save_name"], "pi", save_state_dict=True)
+                safe_save_model(trained_policy, params['algorithm']["networks_save_name"], "pi", save_state_dict=True)
                 global trained_critic1
                 trained_critic1 = critic1
-                safe_save_model(trained_critic1, params["configuration_save_name"], "Q1", save_state_dict=True)
+                safe_save_model(trained_critic1, params['algorithm']["networks_save_name"], "Q1", save_state_dict=True)
                 global trained_critic2
                 trained_critic2 = critic2
-                safe_save_model(trained_critic2, params["configuration_save_name"], "Q2", save_state_dict=True)
+                safe_save_model(trained_critic2, params['algorithm']["networks_save_name"], "Q2", save_state_dict=True)
             steps_taken += 1
             #print("Replay buffer was saved to", params["rb_save_name"])
+        del sim # end training loop
     except KeyboardInterrupt:
        print("Exiting")
     plt.figure() 
     plt.plot(range(0, len(q1s)), q1s, label="Q1")
     plt.plot(range(0, len(q2s)), q2s, label="Q2")
     plt.title("Q values")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_qs.png")                
+    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_qs.png")                
     plt.figure() 
     plt.plot(range(0, len(q_losses)), q_losses)
     plt.title("Q-losses")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_qlosses.png")                
+    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_qlosses.png")                
     plt.figure() 
     plt.plot(range(0, len(pi_losses)), pi_losses)
     plt.title("Policy-losses")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_policy_losses.png")
+    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_policy_losses.png")
     plt.figure()         
     plt.plot(range(0, len(max_ep_rewards)), max_ep_rewards)
     plt.title("Max rewards / episode")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_max_ep_rewards.png")
+    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_max_ep_rewards.png")
     plt.figure()         
     plt.plot(range(0, len(stds)), stds)
     plt.title("Policy entropy")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_stds.png")
+    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_stds.png")
     plt.figure()         
     plt.plot(range(0, len(action_magnitudes)), action_magnitudes)
     plt.title("Action magnitudes")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_action_magnitudes.png")
+    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_action_magnitudes.png")
     plt.figure()         
     plt.plot(range(0, len(q1s_mean)), q1s_mean)
     plt.title("Q1 mean")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_q1_mean.png")
+    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_q1_mean.png")
     q1s_mean = []
     plt.figure()         
     plt.plot(range(0, len(q1s_max)), q1s_max)
     plt.title("Q1 max")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_q1s_max.png")
+    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_q1s_max.png")
     plt.figure()         
     plt.plot(range(0, len(q1s_min)), q1s_min)
     plt.title("Q1 min")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_q1s_min.png")
+    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_q1s_min.png")
     plt.figure()         
     plt.plot(range(0, len(q1s_std)), q1s_std)
     plt.title("Q1 standard deviation")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_q1s_std.png")
+    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_q1s_std.png")
     plt.figure()         
     plt.plot(range(0, len(episode_cum_rewards)), episode_cum_rewards)
     plt.title("Cumulative reward / episode")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_episode_cum_rewards.png")
+    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_episode_cum_rewards.png")
+    safe_save_model(policy, params['algorithm']["networks_save_name"], "pi", save_state_dict=True)
+    safe_save_model(critic1, params['algorithm']["networks_save_name"], "Q1", save_state_dict=True)
+    safe_save_model(critic2, params['algorithm']["networks_save_name"], "Q2", save_state_dict=True)
     return policy
     
 def HER_resample(sim, e, logger, mode="random_future"):
@@ -513,10 +550,8 @@ def give_bonus(episode, bonus, steps_from_done=None):
         steps_from_done = len(episode.steps)
     for step in range(len(episode.steps) - 1, len(episode.steps) - 1 - steps_from_done): # Excluding the last step
         episode.steps[step].reward += bonus
-    
 
-
-def train(sim, params, args): # deprecated!
+def train_deprecated(sim, params, args): # deprecated!
     if "configuration" in params.keys():
         print("Loading configuration", params["configuration"])
         critic1 = load_saved_qnetwork(params, "Q1")
@@ -745,17 +780,22 @@ def collect_teleop_data(sim, rb, rb_save_name):
     rb.append(e)
     rb.save(rb_save_name)
     return e
-def test(sim, trained_policy, num_episodes=100, render=True):
+    
+def test(components):
     import time
-    sim.has_renderer = True
+    import interface
+    sim = interface.Sim(False) # will tell the sim what initial internal state to hold on to
+    sim.compose(composition)
+    
+    reset_eef(composition)
     
     num_steps = 1000
     successes = 0
     trials = 0
     print("Episodes of len", num_steps)
     input("<press any key>")
-    for episode in range(0, num_episodes):
-        state = sim.observe()
+    while True:
+        state = sim
         for step in range(0, num_steps):
             print("State", state)
             action = trained_policy.deterministic_action(state).detach().numpy()
@@ -799,7 +839,7 @@ def safe_save_model(model, configuration_name, model_type, save_state_dict=True)
 
     # Choose the data to save
     data_to_save = model.state_dict() if save_state_dict else model
-    filename = "configurations/" + configuration_name + "/" + model_type + ".pt"
+    filename = "sac_models/" + configuration_name + "/" + model_type + ".pt"
     # Get the target directory from filename
     target_dir = os.path.dirname(os.path.abspath(filename))
     

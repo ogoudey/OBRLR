@@ -30,28 +30,20 @@ if __name__ == "__main__":
     
     import soft_actor_critic as sac # includes policy network
     
-    logger = sac.setup_logger(params["training_parameters"], args.params)
-    
-    if args.real:
-        from real import real # irl robot stuff
-        # unused in current algorithm
-        if not args.pi:
-            print("Please provide a policy.")
-            
-        policy = sac.load_saved_policy(args.pi)
-        real.test_policy(policy)
+    objective_components = params["objective"]
+    learned = []
+    for component in objective_components.keys():
         
-        
-
-    import interface
-    sim = interface.Sim(params["training_parameters"])
+        if "compositor" in objective_components[component].keys():
+            composition = objective_components[component]["compositor"]
+        else:
+            print("Learning", component, "...")
+            pi = sac.train(objective_components[component], composition)
+            learned.append(pi)
     
+    if input("Test? (y/n): ") == "y":
+        for component in learned:
+            sac.test(learned)
+
     
-    
-
-    pi = sac.train(sim, params["training_parameters"], args, logger)
-
-
-    if "testing" in params["training_parameters"].keys():
-        sac.test(sim, pi)
     print("python done.")

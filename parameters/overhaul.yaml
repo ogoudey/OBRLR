@@ -1,0 +1,75 @@
+other_parameters:
+    description: "An example objective in the new RL set up."
+objective:
+    reset_eef:
+        compositor: "reset_eef" 
+    move_eef:
+        HER: False
+        teleop: False
+        bonus: False
+        networks:
+            lr: 0.003
+            hidden_layers:
+                l1: 256
+                l2: 256
+            state_dim: 9
+            action_dim: 3
+        pi:
+            inputs: [
+                "eef_pos",
+                "cube_pos",
+                "eef_cube_displacement"
+                ]
+            outputs:
+                ["eef_desired_move"]
+        reward:
+            k_cube_eef_displacement: 0.02
+        algorithm:
+            num_iterations: 500
+            len_episode: 200
+            gamma: 0.99
+            alpha: 0.2
+            gradient_after: 200
+            batch_size: 64
+            gradient_every: 50
+            save_every: 50000
+            networks_save_name: "eef->cube"
+            rb_save_name: "dump"
+    midway_eef:
+        compositor: "midway_eef"
+    carry_cube:
+        HER: False
+        teleop: False
+        bonus: False
+        networks:
+            lr: 0.003
+            hidden_layers:
+                l1: 256
+                l2: 256
+            state_dim: 6
+            action_dim: 3
+        pi:
+            inputs: [
+                "cube_pos",
+                "cube_goal_pos"
+                ]
+            outputs:
+                ["eef_desired_move"]
+        reward:
+            k_cube_cube_displacement: 0.02
+        algorithm:
+            num_iterations: 500
+            len_episode: 200
+            gamma: 0.99
+            alpha: 0.2
+            gradient_after: 200
+            batch_size: 64
+            gradient_every: 50
+            save_every: 50000
+            networks_save_name: "cube->cube"
+            rb_save_name: "dump"
+
+    
+
+
+    

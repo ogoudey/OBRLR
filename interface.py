@@ -26,153 +26,117 @@ import os
 
 
 class Sim:
-    def __init__(self, params):
+    def __init__(self, testing=False):
     
-        reward_params = params["reward_function"]
-        self.env, self.mem_reward, self.state, self.done = None, None, None, 0
-        self.eef_pos, self.cube_pos = None, None
+        self.mem_reward, self.state, self.done = None, None, 0
+        self.eef_pos, self.initial_cube, self.cube_pos, self.initial_goal = None, None, None, None
+        self.obs = 0
         # Initialize (reset)
-        self.has_renderer = False
+
         
         # Vision
         self.sim_vision = sim_vision.SimVision(use_sim_camera=False) # Change to turn simulated YOLO
         
-        #
+        self.has_renderer = testing
         
-        # FOR RAISE REWARD #
-        
-        #
-        has_renderer = self.has_renderer
-        use_sim_camera = False
-        if "human" in params.keys():
-            if bool(params["human"]):
-                use_sim_camera = True
-                has_renderer = True
-        
-        if "testing" in params.keys():
-            if bool(params["testing"]):
-                has_renderer = True
-                
-        
-        
-        self.reset(has_renderer=has_renderer, use_sim_camera=use_sim_camera)
-        self.initial_cube = self.eef_pos
-        
-        
-        self.use_cost = bool(reward_params["cost"])
-        if self.use_cost:
-            self.cost_scale = reward_params["cost_scale"]
-        self.reward_for_raise = reward_params["raise"]
-        
-        
-        
-          
-    def reset(self, has_renderer=True, use_sim_camera=False):
+        self.env = suite.make(
+            env_name="Lift",
+            robots="Kinova3",
+            has_renderer=False,
+            horizon = 1000000,
+            has_offscreen_renderer=False,
+            use_camera_obs=False,
+        )
 
-        if not self.env:
-            print("Full reset!")
-            if use_sim_camera:
-                self.env = suite.make(
-                    env_name="Lift",
-                    robots="Kinova3",
-                    has_renderer=True,
-                    horizon = 1000000,
-                    has_offscreen_renderer=True,
-                    use_camera_obs=True,
-                    camera_heights=400,
-                    camera_widths=400,
-                    camera_names="sideview",
-                    camera_depths=True
-                )
-            else:
-                self.env = suite.make(
-                    env_name="Lift",
-                    robots="Kinova3",
-                    has_renderer=has_renderer,
-                    horizon = 1000000,
-                    has_offscreen_renderer=False,
-                    use_camera_obs=False,
-                )
+        print("Full reset!")
         
+    def compose(self, params):
+        #common
+        self.env.sim.data.qvel[:] = 0.0
+        self.env.sim.data.qacc[:] = 0.0
+        #
         
-        
-        # Set starting joints (a bad starting position after all?)
-        desired_joint_positions = [0.0, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
-        self.env.robots[0].set_robot_joint_positions(desired_joint_positions)
+        if "reset_eef" in params:
+            desired_joint_positions = [0.0, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
+        elif "midway_eef" in params:
+            desired_joint_positions = [math.pi, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
+        self.env.robots[0].set_robot_joint_positions(desired_joint_positions)      
         
         self.env.sim.data.set_joint_qpos(self.env.model.mujoco_objects[0].joints[0], np.array([0.0,0.0,0.822,1.0,0.0,0.0,0.0]))
 
-        self.env.sim.data.qvel[:] = 0.0
-        self.env.sim.data.qacc[:] = 0.0
-        self.env.sim.forward()
-
+        # Take initial step to get obs for elsewhere and for initial_cube
+        self.obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
         
-        # Take initial step to get obs
-        obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
+        self.initial_cube = self.obs['cube_pos']
         
-        self.initial_cube = obs['cube_pos']
-
-        self.initial_goal = np.array([self.initial_cube[0], self.initial_cube[1], self.initial_cube[2] + 0.05]) # The actual goal
+        if "reset_eef" in params:
+            self.initial_goal = copy.deepcopy(self.initial_cube)
+        elif "midway_eef" in params:
+            self.initial_goal = np.array([self.initial_cube[0], self.initial_cube[1], self.initial_cube[2] + 0.05]) # The actual goal
         
         # form initial state
-        self.form_state(obs)
         
 
         
         
         
-        self.sim_vision.reset()
+        #self.sim_vision.reset() # only needed for YOLO
         
-        self.mem_reward = torch.tensor(self.raise_reward(self.eef_pos, self.initial_cube, self.initial_goal), dtype=torch.float32)
-
+        #self.mem_reward = torch.tensor(self.raise_reward(self.eef_pos, self.initial_cube, self.initial_goal), dtype=torch.float32) # shouldn't need this
+    def eef_cube_displacement(self):
+        # semantic level
+        return self.eef_pos - self.cube_pos
+        
+    def cube_cube_displacement(self):
+        # semantic level - this and the above are the same
+        return self.initial_goal - self.cube_pos
     
+    def k_cube_eef_displacement(self, k):
+        reward = 0
+        if np.linalg.norm(self.initial_goal - self.eef_pos) < k:
+            reward += 1
+            self.done = 1
+        return reward
         
-    def eef_pos(self):
+    def k_cube_cube_displacement(self, k):
+        reward = 0
+        if np.linalg.norm(self.initial_goal - self.cube_pos) < k:
+            reward += 1
+            self.done = 1
+        return reward
+            
+    def get_eef_pos(self):
         site_name = self.env.robots[0].gripper['right'].important_sites["grip_site"]
         eef_site_id = self.env.sim.model.site_name2id(site_name)
         self.eef_pos = self.env.sim.data.site_xpos[eef_site_id]
         return self.eef_pos
 
-    def cube_pos(self):
+    def get_cube_pos(self):
         detection = self.sim_vision.detect(self.obs, self.env, w_video=False)  
         self.cube_pos = detection
         return self.cube_pos
+
+
     
-    def eef_cube_displacement(self):
-        delta = self.cube_pos - self.eef_pos
-    
-    def current_grasp(self):
+    def get_current_grasp(self):
         gripper_pos = self.obs["robot0_gripper_qpos"]  # CHANGE!!  (?)
         opening = gripper_pos.mean()
         print("Check that this moves, and normalize:", opening)
         return np.array([opening])
 
-    def initial_cube_goal(self):
-        return self.initial_cube_goal()
         
     def observe(self):
         state = self.state
         normalized_state = state # i.e. not normalized
         return normalized_state
 
-    def act(self, action, w_video=False):
-        standardized_action = [action[0], action[1], action[2], 0, 0, 0, action[3]]
-        #print("Standardized action:", standardized_action)
-        self.obs, _, _, _ = self.env.step(standardized_action)
-        
-        self.form_state(obs) # form state
+    def act(self, standardized_action, w_video=False):
 
-        
-        ### Update reward ###
-        raise_reward = self.calculate_reward(self.eef_pos, self.cube_pos, torch.tensor(self.initial_goal, dtype=torch.float32), standardized_action)
-        # stored for access with Sim.reward()
-        self.mem_reward = raise_reward
-        
-        ## Done conditions ##
-        if raise_reward == 1:
-            self.done = 1
-        else:
-            self.done = 0      
+        #print("Standardized action:", standardized_action)
+        self.obs, _, _, _ = self.env.step(standardized_action)    
+    
+    def initial_cube_goal(self):
+        return self.initial_goal
     
     def calculate_reward(self, eef_pos, cube_pos, cube_goal, action):
         raise_reward = torch.tensor(self.raise_reward(eef_pos, cube_pos, cube_goal), dtype=torch.float32)
