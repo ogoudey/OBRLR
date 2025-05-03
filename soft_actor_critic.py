@@ -55,9 +55,9 @@ class ReplayBuffer:
         batch = {
             "states": torch.stack([torch.tensor(step.state, dtype=torch.float32) for step in batch_steps]),
             "actions": torch.stack([torch.tensor(step.action, dtype=torch.float32) for step in batch_steps]),
-            "rewards": torch.stack([torch.tensor(step.reward, dtype=torch.float32) for step in batch_steps]),
+            "rewards": torch.stack([torch.tensor(step.reward, dtype=torch.float32) for step in batch_steps]).unsqueeze(1),
             "next_states": torch.stack([torch.tensor(step.next_state, dtype=torch.float32) for step in batch_steps]),
-            "done": torch.stack([torch.tensor(step.done, dtype=torch.float32) for step in batch_steps]),
+            "done": torch.stack([torch.tensor(step.done, dtype=torch.float32) for step in batch_steps]).float().unsqueeze(1),
         }
         assert not torch.isnan(batch["states"]).any()
         assert not torch.isnan(batch["actions"]).any()
@@ -363,7 +363,7 @@ def train(params, composition):
                     #print(f"Action range: {actions.min().item()} to {actions.max().item()}")
                     rewards = batch['rewards']
                     next_states = batch['next_states']
-                    done = batch['done'].float() # Recommended to cast this to float
+                    done = batch['done'] # Recommended to cast this to float
                     logger.info(f"_____Q Network Update {step}_____")
                     state_actions = torch.cat((states, actions), dim=-1)
                     q1_current = critic1(state_actions)
@@ -390,6 +390,10 @@ def train(params, composition):
                         q2_next = qnetwork2(next_state_actions)
                         min_q_next = torch.min(q1_next, q2_next)
                         target_q = rewards + gamma * (1 - done) * (min_q_next - (alpha * next_log_probs))
+                        #print("rewards shape:", rewards.shape)
+                        #print("done shape:", done.shape)
+                        #print("min_q_next shape:", min_q_next.shape)
+                        #print("log_probs shape:", next_log_probs.shape)
                         # clamp the change around the reward scale
                         #target_q = torch.clamp(raw_target, -1.0, 1.0)   
                     
@@ -781,39 +785,32 @@ def collect_teleop_data(sim, rb, rb_save_name):
     rb.save(rb_save_name)
     return e
     
-def test(components):
+def test(params, composition, policy):
+    # hard coded - not generalized
     import time
     import interface
-    sim = interface.Sim(False) # will tell the sim what initial internal state to hold on to
+    pi = params["pi"]
+    sim = interface.Sim(testing=True) # will tell the sim what initial internal state to hold on to
     sim.compose(composition)
-    
-    reset_eef(composition)
-    
     num_steps = 1000
-    successes = 0
-    trials = 0
+    
     print("Episodes of len", num_steps)
     input("<press any key>")
-    while True:
-        state = sim
-        for step in range(0, num_steps):
-            print("State", state)
-            action = trained_policy.deterministic_action(state).detach().numpy()
-            print("Action:", action)        
-            sim.act(action)
-            reward = sim.reward()
-            state = sim.observe()
-            
-            print("Reward", reward)
-            if reward.item() == sim.reward_for_raise:
-                time.sleep(2)
-                successes += 1
-                sim.reset(has_renderer=True)
-                break
-                
-        trials += 1
-        print("Success rate:", successes/trials)
-    return successes/trials  
+    sim.compose(["reset_eef"])
+    done = 0
+    state = form_state(sim, pi["inputs"])
+    for step in range(0, num_steps):
+        print("State", state)
+        action = policy.deterministic_action(state).detach().numpy()
+        print("Action:", action)        
+        sim.act(form_action(action, pi["inputs"]))
+        done = sim.done
+        
+        if done or step >= 1000:
+            time.sleep(2)
+            break
+        state = sim.observe()
+    print("Testing visually done")
 
 def load_replay_buffer(rb_name):
     file_path = "replays/" + rb_name + ".tmp"

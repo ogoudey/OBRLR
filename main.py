@@ -31,7 +31,7 @@ if __name__ == "__main__":
     import soft_actor_critic as sac # includes policy network
     
     objective_components = params["objective"]
-    learned = []
+    policies = dict()
     for component in objective_components.keys():
         
         if "compositor" in objective_components[component].keys():
@@ -39,11 +39,11 @@ if __name__ == "__main__":
         else:
             print("Learning", component, "...")
             pi = sac.train(objective_components[component], composition)
-            learned.append(pi)
+            policies[component] = pi
     
     if input("Test? (y/n): ") == "y":
-        for component in learned:
-            sac.test(learned)
+        for component in policies.keys():
+            sac.test([component], composition, policies[component])
 
     
     print("python done.")
