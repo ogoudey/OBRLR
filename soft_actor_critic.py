@@ -173,7 +173,7 @@ class PolicyNetwork(nn.Module):
         
         return action
 
-def form_state(sim, params):
+def form_state(sim, params, logger=None):
 
         # Order matters for internal sim state
         state = np.array([])
@@ -183,7 +183,7 @@ def form_state(sim, params):
         
         if "cube_pos" in params:
             state = np.concatenate((state, sim.get_cube_pos()))
-        
+                
         if "eef_cube_displacement" in params:
             state = np.concatenate((state, sim.eef_cube_displacement()))
         
@@ -195,7 +195,8 @@ def form_state(sim, params):
     
         if "cube_goal_pos" in params:    
             state = np.concatenate((state, sim.initial_cube_goal()))
-
+        if logger:
+            logger.info(f"{params}: {state}")
         # tensor for networks
         return torch.tensor(state, dtype=torch.float32)
 
@@ -323,7 +324,7 @@ def train(params, composition):
     
     
     steps_taken = 0
-    state = form_state(sim, pi["inputs"])
+    state = form_state(sim, pi["inputs"], logger)
     e = Episode()
     max_ep_reward = -99
     cum_reward = 0
@@ -332,16 +333,16 @@ def train(params, composition):
             action_, std = policy.sample(state)
             stds.append(std.item())
             action = action_.detach().numpy()
-            logger.info(f"____Taking action {step}___")
+            #logger.info(f"____Taking action {step}___")
             standardized_action = form_action(action, pi["outputs"])
             sim.act(standardized_action)
-            logger.info(f"Standard deviation {std}")
+            #logger.info(f"Standard deviation {std}")
             action_magnitudes.append(np.linalg.norm(action))
-            logger.info(f"Action {action}; Magnitude {np.linalg.norm(action)}")
+            #logger.info(f"Action {action}; Magnitude {np.linalg.norm(action)}")
             reward = form_reward(sim, params["reward"])
             cum_reward += reward
             max_ep_reward = max(max_ep_reward, reward)
-            next_state = form_state(sim, pi["inputs"])
+            next_state = form_state(sim, pi["inputs"], logger)
             done = sim.done
             e.append(state, action, reward, next_state, done)
             state = next_state
@@ -378,7 +379,7 @@ def train(params, composition):
                     rewards = batch['rewards']
                     next_states = batch['next_states']
                     done = batch['done'] # Recommended to cast this to float
-                    logger.info(f"_____Q Network Update {step}_____")
+                    #logger.info(f"_____Q Network Update {step}_____")
                     state_actions = torch.cat((states, actions), dim=-1)
                     q1_current = critic1(state_actions)
                     q2_current = critic2(state_actions)
@@ -393,8 +394,8 @@ def train(params, composition):
                         q1s.append(q1_current.mean().item()) # for plotting
                         q2s.append(q2_current.mean().item())
 
-                    logger.info(f"Q1 {q1_current.detach().numpy().mean()}; Q2 {q2_current.detach().numpy().mean()}")   
-                    logger.info(f"Mean reward {rewards.detach().numpy().mean()}; 1 reward? {np.any(rewards.numpy() == 1)}")
+                    #logger.info(f"Q1 {q1_current.detach().numpy().mean()}; Q2 {q2_current.detach().numpy().mean()}")   
+                    #logger.info(f"Mean reward {rewards.detach().numpy().mean()}; 1 reward? {np.any(rewards.numpy() == 1)}")
                     
                     
                     with torch.no_grad():
@@ -411,11 +412,11 @@ def train(params, composition):
                         # clamp the change around the reward scale
                         #target_q = torch.clamp(raw_target, -1.0, 1.0)   
                     
-                    logger.info(f"Q1 next {q1_next.mean().item()}; Q2 next {q2_next.mean().item()}")
+                    #logger.info(f"Q1 next {q1_next.mean().item()}; Q2 next {q2_next.mean().item()}")
                     q1_loss = F.mse_loss(q1_current, target_q)
                     q2_loss = F.mse_loss(q2_current, target_q)
                     q_loss = q1_loss + q2_loss # Idea from Spinningup
-                    logger.info(f"Q1 Loss {q1_loss.mean().item()}; Q2 Loss {q2_loss.detach().numpy().mean()}") 
+                    #logger.info(f"Q1 Loss {q1_loss.mean().item()}; Q2 Loss {q2_loss.detach().numpy().mean()}") 
 
                     # Here spinning up does loss_q = lossq1 + lossq2
                     
@@ -442,17 +443,17 @@ def train(params, composition):
                     for param, target_param in zip(critic2.parameters(), qnetwork2.parameters()):
                         target_param.data.mul_(mix)
                         target_param.data.add_((1 - mix) * param.data)
-                    logger.info(f"_____Actor Update {step}_____")
+                    #logger.info(f"_____Actor Update {step}_____")
                     # Actor update #
                     new_actions, log_probs = policy.sample(states)  
-                    logger.info(f"Action mean {new_actions.detach().numpy().mean()}; Log prob mean {log_probs.detach().numpy().mean()};")
+                    #logger.info(f"Action mean {new_actions.detach().numpy().mean()}; Log prob mean {log_probs.detach().numpy().mean()};")
                     new_state_actions = torch.cat((states, new_actions), dim=-1)
                     q1_val_new = critic1(new_state_actions)
                     q2_val_new = critic2(new_state_actions)
                     q_val_new = torch.min(q1_val_new, q2_val_new)
-                    logger.info(f"Q1 {q1_val_new.detach().numpy().mean()}; Q2 {q2_val_new.detach().numpy().mean()};")
+                    #logger.info(f"Q1 {q1_val_new.detach().numpy().mean()}; Q2 {q2_val_new.detach().numpy().mean()};")
                     policy_loss = (alpha * log_probs - q_val_new).mean()
-                    logger.info(f"Policy Loss {policy_loss.detach().numpy().mean()};")
+                    #logger.info(f"Policy Loss {policy_loss.detach().numpy().mean()};")
                     policy_optimizer.zero_grad()
                     policy_loss.backward()
                     torch.nn.utils.clip_grad_norm_(policy.parameters(), 5.0)
@@ -559,7 +560,7 @@ def train(params, composition):
     return policy
     
 def HER_resample(sim, e, logger, mode="random_future"):
-    logger.info(f"__HER Sampling__")
+    #logger.info(f"__HER Sampling__")
     he = Episode()
     for t in range(0, len(e.steps) -1):
         if mode == "random_future":
@@ -581,10 +582,10 @@ def HER_resample(sim, e, logger, mode="random_future"):
         H_next_state[10:13] = achieved_cube_pos # goal = acheived
         he.append(H_state, e.steps[t].action, torch.tensor(HER_reward, dtype=torch.float32), torch.tensor(H_next_state, dtype=torch.float32), 0) # done = 0
         
-        logger.info(f"Current {t}, {e.steps[t].state[3:6]} with goal {e.steps[t].state[10:13]}")
-        logger.info(f"Future from step {future} acheived {achieved_cube_pos};")
-        logger.info(f"Assigned {achieved_cube_pos} to current goal {H_state[10:13]};")
-        logger.info(f"EEF at {H_state[0:3]}; Cube position {H_state[3:6]}; Reward {HER_reward}")
+        #logger.info(f"Current {t}, {e.steps[t].state[3:6]} with goal {e.steps[t].state[10:13]}")
+        #logger.info(f"Future from step {future} acheived {achieved_cube_pos};")
+        #logger.info(f"Assigned {achieved_cube_pos} to current goal {H_state[10:13]};")
+        #logger.info(f"EEF at {H_state[0:3]}; Cube position {H_state[3:6]}; Reward {HER_reward}")
     return he
 
 def give_bonus(episode, bonus, steps_from_done=None):
