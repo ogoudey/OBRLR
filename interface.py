@@ -116,7 +116,7 @@ class Sim:
         
     def k_cube_cube_displacement(self, k):
         reward = 0
-        print("Cube->Cube Displacement:", self.initial_goal - self.cube_pos)
+        #print("Cube->Cube Displacement:", self.initial_goal - self.cube_pos)
         if np.linalg.norm(self.initial_goal - self.cube_pos) < k:
             reward += 1
             self.done = 1
@@ -151,7 +151,7 @@ class Sim:
 
         #print("Standardized action:", standardized_action)
         self.obs, _, _, _ = self.env.step(standardized_action)   
-        self.env.render() 
+
     
     def initial_cube_goal(self):
         return self.initial_goal

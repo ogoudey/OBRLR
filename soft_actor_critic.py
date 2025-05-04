@@ -236,7 +236,7 @@ trained_critic2 = None
 # train method based on OpenAI's spinningup
 def train(params, composition):
     import interface
-    sim = interface.Sim(params['teleop'] or True) # will tell the sim what initial internal state to hold on to
+    sim = interface.Sim(params['teleop']) # will tell the sim what initial internal state to hold on to
     sim.compose(composition)
     
     logger = setup_logger(None)
@@ -290,7 +290,8 @@ def train(params, composition):
         log_alpha = torch.tensor(0.0, requires_grad=True)
         alpha_optimizer = torch.optim.Adam([log_alpha], lr=params["A-tuning"]["lr"])
         alpha = log_alpha.exp()
-        target_entropy = -params["networks"]["action_dim"]  # or a tuned value
+        #target_entropy = -params["networks"]["action_dim"]  # or a tuned value
+        target_entropy = -1
     else:
         alpha = params['algorithm']['alpha']
     alphas.append(alpha.item())
@@ -363,7 +364,7 @@ def train(params, composition):
                     rb.append(he)
                 e = Episode()
                 sim.close()
-                sim = interface.Sim(True) # will tell the sim what initial internal state to hold on to
+                sim = interface.Sim() # will tell the sim what initial internal state to hold on to
                 sim.compose(composition)
                 state = form_state(sim, pi["inputs"])
 
@@ -462,7 +463,7 @@ def train(params, composition):
                     if "A-tuning" in params.keys():
                         alpha_loss = -(log_alpha * (log_probs + target_entropy).detach()).mean()
                         logger.info(f"Alpha Loss {alpha_loss.detach().numpy().mean()}; Alpha {alpha.item()};")
-                        print(alpha.item())
+                        #print(alpha.item())
 
                         alpha_optimizer.zero_grad()
                         alpha_loss.backward()
