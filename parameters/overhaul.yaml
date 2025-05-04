@@ -4,6 +4,8 @@ objective:
     reset_eef:
         compositor: "reset_eef" 
     move_eef:
+        A-tuning:
+            lr: 0.003
         HER: False
         teleop: False
         bonus: False
@@ -23,21 +25,23 @@ objective:
             outputs:
                 ["eef_desired_move"]
         reward:
-            k_cube_eef_displacement: 0.02
+            k_cube_eef_displacement: 0.01
         algorithm:
-            num_iterations: 2000
-            len_episode: 200
+            num_iterations: 200
+            len_episode: 100
             gamma: 0.99
             alpha: 0.2
-            gradient_after: 1000
-            batch_size: 216
-            gradient_every: 50
+            gradient_after: 100
+            batch_size: 16
+            gradient_every: 20
             save_every: 50000
             networks_save_name: "eef->cube"
             rb_save_name: "dump"
     midway_eef:
         compositor: "midway_eef"
     carry_cube:
+        A-tuning:
+            lr: 0.003
         HER: False
         teleop: False
         bonus: False
@@ -58,13 +62,13 @@ objective:
         reward:
             k_cube_cube_displacement: 0.02
         algorithm:
-            num_iterations: 2000
-            len_episode: 200
+            num_iterations: 200
+            len_episode: 100
             gamma: 0.99
             alpha: 0.2
-            gradient_after: 1000
-            batch_size: 216
-            gradient_every: 50
+            gradient_after: 100
+            batch_size: 16
+            gradient_every: 20
             save_every: 50000
             networks_save_name: "cube->cube"
             rb_save_name: "dump"

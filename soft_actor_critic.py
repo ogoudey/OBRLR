@@ -140,7 +140,7 @@ class PolicyNetwork(nn.Module):
         self.log_std_layer = nn.Linear(params['hidden_layers']['l2'], action_dim)
     
     def forward(self, state):
-        #print(state)
+
         x = F.relu(self.fc1(state))
 
         x = F.relu(self.fc2(x))
@@ -163,14 +163,18 @@ class PolicyNetwork(nn.Module):
         
         log_prob = normal.log_prob(z) - torch.log(1 - action.pow(2) + 1e-6)
         log_prob = log_prob.sum(dim=-1, keepdim=True)
+        #print("Mean:", mean.detach().numpy(), "STD:", std.detach().numpy(), "Action:", action.detach().numpy())
         return action, log_prob
         
     def deterministic_action(self, state):
-        mean, __ = self.forward(state)
+        mean, std = self.forward(state)
+
         action = torch.tanh(mean)
+        
         return action
 
 def form_state(sim, params):
+
         # Order matters for internal sim state
         state = np.array([])
         if "eef_pos" in params:
@@ -232,7 +236,7 @@ trained_critic2 = None
 # train method based on OpenAI's spinningup
 def train(params, composition):
     import interface
-    sim = interface.Sim(params['teleop']) # will tell the sim what initial internal state to hold on to
+    sim = interface.Sim(params['teleop'] or True) # will tell the sim what initial internal state to hold on to
     sim.compose(composition)
     
     logger = setup_logger(None)
@@ -250,6 +254,7 @@ def train(params, composition):
     q1s_min = []
     q1s_std = []
     episode_cum_rewards = []
+    alphas = []
     ###
     
     network_parameters = params["networks"]
@@ -281,7 +286,14 @@ def train(params, composition):
     if "HER" in params.keys():
         if params["HER"]:
             HER = True
-    
+    if "A-tuning" in params.keys():
+        log_alpha = torch.tensor(0.0, requires_grad=True)
+        alpha_optimizer = torch.optim.Adam([log_alpha], lr=params["A-tuning"]["lr"])
+        alpha = log_alpha.exp()
+        target_entropy = -params["networks"]["action_dim"]  # or a tuned value
+    else:
+        alpha = params['algorithm']['alpha']
+    alphas.append(alpha.item())
     policy_optimizer = optim.Adam(policy.parameters(), params['networks']['lr'])
     q1_optimizer = optim.Adam(critic1.parameters(), params['networks']['lr'])
     q2_optimizer = optim.Adam(critic2.parameters(), params['networks']['lr'])
@@ -297,7 +309,7 @@ def train(params, composition):
     
     
     total_steps, len_episode = params['algorithm']['num_iterations'], params['algorithm']['len_episode']
-    gamma, alpha = params['algorithm']['gamma'], params['algorithm']['alpha']
+    gamma = params['algorithm']['gamma']
     
     gradient_after = params['algorithm']['gradient_after']
     gradient_every = params['algorithm']['gradient_every']
@@ -320,7 +332,8 @@ def train(params, composition):
             stds.append(std.item())
             action = action_.detach().numpy()
             logger.info(f"____Taking action {step}___")
-            sim.act(form_action(action, pi["inputs"]))
+            standardized_action = form_action(action, pi["outputs"])
+            sim.act(standardized_action)
             logger.info(f"Standard deviation {std}")
             action_magnitudes.append(np.linalg.norm(action))
             logger.info(f"Action {action}; Magnitude {np.linalg.norm(action)}")
@@ -349,8 +362,8 @@ def train(params, composition):
                     he = HER_resample(sim, e, logger)
                     rb.append(he)
                 e = Episode()
-                del sim
-                sim = interface.Sim() # will tell the sim what initial internal state to hold on to
+                sim.close()
+                sim = interface.Sim(True) # will tell the sim what initial internal state to hold on to
                 sim.compose(composition)
                 state = form_state(sim, pi["inputs"])
 
@@ -444,6 +457,21 @@ def train(params, composition):
                     torch.nn.utils.clip_grad_norm_(policy.parameters(), 5.0)
                     policy_optimizer.step()
                     
+                    ### Entropy coefficient update
+                    
+                    if "A-tuning" in params.keys():
+                        alpha_loss = -(log_alpha * (log_probs + target_entropy).detach()).mean()
+                        logger.info(f"Alpha Loss {alpha_loss.detach().numpy().mean()}; Alpha {alpha.item()};")
+                        print(alpha.item())
+
+                        alpha_optimizer.zero_grad()
+                        alpha_loss.backward()
+                        alpha_optimizer.step()
+
+                        # Update alpha after gradient step
+                        alpha = log_alpha.exp()
+                        alphas.append(alpha.item())
+                        #
                     
                     ### plotting ###
 
@@ -466,6 +494,9 @@ def train(params, composition):
                 safe_save_model(trained_critic2, params['algorithm']["networks_save_name"], "Q2", save_state_dict=True)
             steps_taken += 1
             #print("Replay buffer was saved to", params["rb_save_name"])
+            
+        sim.close()
+        time.sleep(2)
         del sim # end training loop
     except KeyboardInterrupt:
        print("Exiting")
@@ -515,9 +546,15 @@ def train(params, composition):
     plt.plot(range(0, len(episode_cum_rewards)), episode_cum_rewards)
     plt.title("Cumulative reward / episode")
     plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_episode_cum_rewards.png")
+    plt.figure()         
+    plt.plot(range(0, len(alphas)), alphas)
+    plt.title("Alpha")
+    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_alpha.png")
+    
     safe_save_model(policy, params['algorithm']["networks_save_name"], "pi", save_state_dict=True)
     safe_save_model(critic1, params['algorithm']["networks_save_name"], "Q1", save_state_dict=True)
     safe_save_model(critic2, params['algorithm']["networks_save_name"], "Q2", save_state_dict=True)
+
     return policy
     
 def HER_resample(sim, e, logger, mode="random_future"):
@@ -791,25 +828,26 @@ def test(params, composition, policy):
     import interface
     pi = params["pi"]
     sim = interface.Sim(testing=True) # will tell the sim what initial internal state to hold on to
-    sim.compose(composition)
+    sim.compose([composition])
     num_steps = 1000
     
     print("Episodes of len", num_steps)
     input("<press any key>")
-    sim.compose(["reset_eef"])
     done = 0
     state = form_state(sim, pi["inputs"])
     for step in range(0, num_steps):
-        print("State", state)
+
         action = policy.deterministic_action(state).detach().numpy()
-        print("Action:", action)        
-        sim.act(form_action(action, pi["inputs"]))
+        #action = policy.sample(state)[0].detach().numpy()
+
+        sim.act(form_action(action, pi["outputs"]))
         done = sim.done
         
         if done or step >= 1000:
             time.sleep(2)
             break
-        state = sim.observe()
+        state = form_state(sim, pi["inputs"])
+    sim.close()
     print("Testing visually done")
 
 def load_replay_buffer(rb_name):

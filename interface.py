@@ -37,12 +37,10 @@ class Sim:
         # Vision
         self.sim_vision = sim_vision.SimVision(use_sim_camera=False) # Change to turn simulated YOLO
         
-        self.has_renderer = testing
-        
         self.env = suite.make(
             env_name="Lift",
             robots="Kinova3",
-            has_renderer=False,
+            has_renderer=testing,
             horizon = 1000000,
             has_offscreen_renderer=False,
             use_camera_obs=False,
@@ -118,6 +116,7 @@ class Sim:
         
     def k_cube_cube_displacement(self, k):
         reward = 0
+        print("Cube->Cube Displacement:", self.initial_goal - self.cube_pos)
         if np.linalg.norm(self.initial_goal - self.cube_pos) < k:
             reward += 1
             self.done = 1
@@ -151,7 +150,8 @@ class Sim:
     def act(self, standardized_action, w_video=False):
 
         #print("Standardized action:", standardized_action)
-        self.obs, _, _, _ = self.env.step(standardized_action)    
+        self.obs, _, _, _ = self.env.step(standardized_action)   
+        self.env.render() 
     
     def initial_cube_goal(self):
         return self.initial_goal
@@ -199,7 +199,8 @@ class Sim:
         img_name = 'sideview'+str(i)+'.png'
         #print("Photo-taking turned off.")
         img.save('vision/data/Robosuite3/Images' + img_name)
-
+    def close(self):
+        self.env.close()
 # helper function for taking sim photos
 def take_onboard_photo(obs):
     i = random.random()*1000

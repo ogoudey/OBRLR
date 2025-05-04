@@ -42,8 +42,9 @@ if __name__ == "__main__":
             policies[component] = pi
     
     if input("Test? (y/n): ") == "y":
-        for component in policies.keys():
-            sac.test([component], composition, policies[component])
-
+        composition = "reset_eef"
+        sac.test(objective_components["move_eef"], composition, policies["move_eef"])
+        composition = "midway_eef"
+        sac.test(objective_components["carry_cube"], composition, policies["carry_cube"])
     
     print("python done.")
