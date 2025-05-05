@@ -30,28 +30,22 @@ if __name__ == "__main__":
     
     import soft_actor_critic as sac # includes policy network
     
-    logger = sac.setup_logger(params["training_parameters"], args.params)
+    objective_components = params["objective"]
+    parameters_name = args.params.split('/')[1]
+    policies = dict()
+    for component in objective_components.keys():
+        comp_params = objective_components[component]
+        if "compositor" in comp_params.keys():
+            composition = comp_params["compositor"]
+        else:
+            print("Learning", component, "with inputs", comp_params["pi"]["inputs"], "and outputs", comp_params["pi"]["outputs"])
+            pi = sac.train(comp_params, composition, parameters_name)
+            policies[component] = pi
     
-    if args.real:
-        from real import real # irl robot stuff
-        # unused in current algorithm
-        if not args.pi:
-            print("Please provide a policy.")
-            
-        policy = sac.load_saved_policy(args.pi)
-        real.test_policy(policy)
-        
-        
-
-    import interface
-    sim = interface.Sim(params["training_parameters"])
+    if input("Test? (y/n): ") == "y":
+        composition = "reset_eef"
+        sac.test(objective_components["move_eef"], composition, policies["move_eef"])
+        composition = "midway_eef"
+        sac.test(objective_components["carry_cube"], composition, policies["carry_cube"])
     
-    
-    
-    if "train2" in params["training_parameters"].keys():
-        pi = sac.train2(sim, params["training_parameters"], args, logger)
-    else:
-        sac.train(sim, params["training_parameters"], args)
-    if "testing" in params["training_parameters"].keys():
-        sac.test(sim, pi)
     print("python done.")

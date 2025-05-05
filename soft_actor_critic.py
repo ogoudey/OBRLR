@@ -1,3 +1,9 @@
+### Provides RL algorithms for learning components of the objective ###
+
+# Provides helpers to carry out objective "check"
+
+
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -49,9 +55,9 @@ class ReplayBuffer:
         batch = {
             "states": torch.stack([torch.tensor(step.state, dtype=torch.float32) for step in batch_steps]),
             "actions": torch.stack([torch.tensor(step.action, dtype=torch.float32) for step in batch_steps]),
-            "rewards": torch.stack([torch.tensor(step.reward, dtype=torch.float32) for step in batch_steps]),
+            "rewards": torch.stack([torch.tensor(step.reward, dtype=torch.float32) for step in batch_steps]).unsqueeze(1),
             "next_states": torch.stack([torch.tensor(step.next_state, dtype=torch.float32) for step in batch_steps]),
-            "done": torch.stack([torch.tensor(step.done, dtype=torch.float32) for step in batch_steps]),
+            "done": torch.stack([torch.tensor(step.done, dtype=torch.float32) for step in batch_steps]).float().unsqueeze(1),
         }
         assert not torch.isnan(batch["states"]).any()
         assert not torch.isnan(batch["actions"]).any()
@@ -91,8 +97,8 @@ class Episode:
 class Step:
     def __init__(self, state, action, reward, next_state, done):
         self.state = state.detach().numpy()
-        self.action = action
-        self.reward = reward.detach().numpy()
+        self.action = action.detach().numpy()
+        self.reward = reward
         self.next_state = next_state.detach().numpy()
         self.done = done
         
@@ -100,7 +106,7 @@ class Step:
 class QNetwork(nn.Module):
     def __init__(self, params):
         
-        state_action_dim = 17 # 13 state dimension, 4 action dimension
+        state_action_dim = params["state_dim"] + params["action_dim"] # 13 state dimension, 4 action dimension
         q_value_dim = 1
         super(QNetwork, self).__init__()
         self.fc1 = nn.Linear(state_action_dim, params['hidden_layers']['l1'])
@@ -123,8 +129,8 @@ class QNetwork(nn.Module):
 
 class PolicyNetwork(nn.Module):
     def __init__(self, params):
-        state_dim = 13 # 3 eef location, 3 cube location, 3 delta locations, 3 cube goal location, gripper
-        action_dim = 4 # 3 dimensions, gripper
+        state_dim = params["state_dim"] # 3 eef location, 3 cube location, 3 delta locations, 3 cube goal location, gripper (is the max)
+        action_dim = params["action_dim"] # 3 dimensions, gripper (is the max)
         super(PolicyNetwork, self).__init__()
         self.fc1 = nn.Linear(state_dim, params['hidden_layers']['l1'])
         self.fc2 = nn.Linear(params['hidden_layers']['l1'], params['hidden_layers']['l2'])
@@ -134,7 +140,7 @@ class PolicyNetwork(nn.Module):
         self.log_std_layer = nn.Linear(params['hidden_layers']['l2'], action_dim)
     
     def forward(self, state):
-        #print(state)
+
         x = F.relu(self.fc1(state))
 
         x = F.relu(self.fc2(x))
@@ -157,13 +163,76 @@ class PolicyNetwork(nn.Module):
         
         log_prob = normal.log_prob(z) - torch.log(1 - action.pow(2) + 1e-6)
         log_prob = log_prob.sum(dim=-1, keepdim=True)
+        #print("Mean:", mean.detach().numpy(), "STD:", std.detach().numpy(), "Action:", action.detach().numpy())
         return action, log_prob
         
     def deterministic_action(self, state):
-        mean, __ = self.forward(state)
+        mean, std = self.forward(state)
+
         action = torch.tanh(mean)
+        
         return action
 
+def form_state(sim, params, logger=None):
+
+        # Order matters for internal sim state
+        state = np.array([])
+        if "eef_pos" in params:
+            state = np.concatenate((state, sim.get_eef_pos()))
+        # REAL GET EEF_POS
+        
+        if "cube_pos" in params:
+            state = np.concatenate((state, sim.get_cube_pos()))
+                
+        if "eef_cube_displacement" in params:
+            state = np.concatenate((state, sim.eef_cube_displacement()))
+        
+        if "cube_cube_displacement" in params:
+            state = np.concatenate((state, sim.cube_cube_displacement()))
+        
+        if "current_grasp" in params:
+            state = np.concatenate((state, sim.get_current_grasp()))
+    
+        if "cube_goal_pos" in params:    
+            state = np.concatenate((state, sim.initial_cube_goal()))
+        if logger:
+            logger.info(f"{params}:\n{state}")
+        # tensor for networks
+        return torch.tensor(state, dtype=torch.float32)
+
+def form_action(action, params, logger=None):
+    action = action.detach().numpy()
+    # Must fit into the robosuite 'port'
+    simized_action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    if "eef_desired_move" in params:
+        simized_action[0:3] = action[0:3]
+    if "gripper_move" in params:
+        simized_action[6] = action[3]
+    if "all_7_joints" in params:
+        simized_action = action
+    if logger:
+        logger.info(f"{params}:\n {simized_action}") 
+    return simized_action
+
+def form_reward(sim, params):
+    
+    reward = 0.0
+    if "k_cube_eef_distance" in params.keys():
+        reward += sim.k_cube_eef_distance(params["k_cube_eef_distance"])
+    if "k_cube_cube_distance" in params.keys():
+        reward += sim.k_cube_cube_distance(params["k_cube_cube_distance"])
+    if "eef_cube_distance" in params.keys():
+        reward += sim.eef_cube_distance(params["eef_cube_distance"])
+    if "cube_cube_distance" in params.keys():
+        reward += sim.cube_cube_distance(params["cube_cube_distance"])
+    return reward
+# Helpers #
+
+def reset_eef(composition):
+    # composition is what's in common of training and real
+    sim = interface.Sim(params['reward'], params['teleop']) # will tell the sim what initial internal state to hold on to
+    sim.compose(composition)
+#
 
 
 #       Control Scripts       #
@@ -175,9 +244,13 @@ trained_critic1 = None
 trained_critic2 = None
 
 # train method based on OpenAI's spinningup
-def train2(sim, params, args, logger):
+def train(params, composition, parameter_file_name=""):
+    import interface
+    sim = interface.Sim(params['teleop']) # will tell the sim what initial internal state to hold on to
+    sim.compose(composition)
     
-
+    logger = setup_logger(None)
+    
     ### plotting
     q_losses = []
     pi_losses = []
@@ -191,19 +264,17 @@ def train2(sim, params, args, logger):
     q1s_min = []
     q1s_std = []
     episode_cum_rewards = []
+    alphas = []
+    mean_reward_per_grad = []
     ###
     
+    network_parameters = params["networks"]
 
-    if "configuration" in params.keys():
-        print("Loading configuration", params["configuration"])
-        critic1 = load_saved_qnetwork(params, "Q1")
-        critic2 = load_saved_qnetwork(params, "Q2")
-        policy = load_saved_policy(params)
-    else:
-        print("Generating new configuration...")
-        policy = PolicyNetwork(params['networks']['policy'])
-        critic1 = QNetwork(params['networks']['q'])
-        critic2 = QNetwork(params['networks']['q'])
+    print("Generating new configuration...")
+    policy = PolicyNetwork(network_parameters)
+    critic1 = QNetwork(network_parameters)
+    critic2 = QNetwork(network_parameters)
+    
     if "replay_buffer" in params.keys():
         print("Loading replay buffer", params["replay_buffer"])
         rb = load_replay_buffer(params["replay_buffer"])
@@ -212,8 +283,9 @@ def train2(sim, params, args, logger):
             rb.left_append(he)
     else:
         print("Starting new replay buffer...")
-        rb = ReplayBuffer()        
-    ### If including a teleop episode (will this work?) ###
+        rb = ReplayBuffer()       
+         
+    ### If including a teleop episode (DEPRECATED) ###
     if "teleop" in params.keys():
         for tele_episode in range(0, params["teleop"]): # only works with teleop: 1
             e = collect_teleop_data(sim, rb, "teleop")
@@ -223,9 +295,28 @@ def train2(sim, params, args, logger):
             he = HER_resample(sim, e, logger, mode="final")
             rb.left_append(he)
     ###
-    policy_optimizer = optim.Adam(policy.parameters(), params['networks']['policy']['lr'])
-    q1_optimizer = optim.Adam(critic1.parameters(), params['networks']['q']['lr'])
-    q2_optimizer = optim.Adam(critic2.parameters(), params['networks']['q']['lr'])
+    
+    if "all_7_joints" in params["pi"]["outputs"]:
+        # Set mode of robosuite control to special case
+        print("Not implemented yet!")
+    else:
+        pass
+    
+    if "HER" in params.keys():
+        if params["HER"]:
+            HER = True
+    if "A-tuning" in params.keys():
+        log_alpha = torch.tensor(0.0, requires_grad=True)
+        alpha_optimizer = torch.optim.Adam([log_alpha], lr=params["A-tuning"]["lr"])
+        alpha = log_alpha.exp()
+        target_entropy = -params["networks"]["action_dim"]  # or a tuned value
+        #target_entropy = -1
+    else:
+        alpha = params['algorithm']['alpha']
+    alphas.append(alpha.item())
+    policy_optimizer = optim.Adam(policy.parameters(), params['networks']['lr'])
+    q1_optimizer = optim.Adam(critic1.parameters(), params['networks']['lr'])
+    q2_optimizer = optim.Adam(critic2.parameters(), params['networks']['lr'])
     
     # Make 'target' networks 
     qnetwork1 = copy.deepcopy(critic1)
@@ -238,7 +329,7 @@ def train2(sim, params, args, logger):
     
     
     total_steps, len_episode = params['algorithm']['num_iterations'], params['algorithm']['len_episode']
-    gamma, alpha = params['algorithm']['gamma'], params['algorithm']['alpha']
+    gamma = params['algorithm']['gamma']
     
     gradient_after = params['algorithm']['gradient_after']
     gradient_every = params['algorithm']['gradient_every']
@@ -246,30 +337,29 @@ def train2(sim, params, args, logger):
     full_sim_reset_every = 50000
     HER = False
     
-    if "HER" in params.keys():
-        if params["HER"]:
-            HER = True
+    
+    pi = params['pi']
     
     
     steps_taken = 0
-    state = sim.observe()
+    state = form_state(sim, pi["inputs"], logger)
     e = Episode()
     max_ep_reward = -99
     cum_reward = 0
     try: 
         for step in tqdm(range(1, total_steps), position=0):
-            action_, std = policy.sample(state)
-            stds.append(std.item())
-            action = action_.detach().numpy()
-            logger.info(f"____Taking action {step}___")
-            sim.act(action)
-            logger.info(f"Standard deviation {std}")
-            action_magnitudes.append(np.linalg.norm(action))
-            logger.info(f"Action {action}; Magnitude {np.linalg.norm(action)}")
-            reward = sim.reward()
+            action, std = policy.sample(state)
+            
+            #logger.info(f"____Taking action {step}___")
+            standardized_action = form_action(action, pi["outputs"], logger)
+            sim.act(standardized_action)
+            #logger.info(f"Standard deviation {std}")
+            #action_magnitudes.append(np.linalg.norm(action))
+            #logger.info(f"Action {action}; Magnitude {np.linalg.norm(action)}")
+            reward = form_reward(sim, params["reward"])
             cum_reward += reward
             max_ep_reward = max(max_ep_reward, reward)
-            next_state = sim.observe()
+            next_state = form_state(sim, pi["inputs"], logger)
             done = sim.done
             e.append(state, action, reward, next_state, done)
             state = next_state
@@ -291,13 +381,11 @@ def train2(sim, params, args, logger):
                     he = HER_resample(sim, e, logger)
                     rb.append(he)
                 e = Episode()
-                sim.env._step_counter = 0
-                
-                sim.reset()
-                state = sim.observe()
-                if step % full_sim_reset_every == 0:
-                    sim.env = None
-                    sim.reset()
+                sim.close()
+                sim = interface.Sim() # will tell the sim what initial internal state to hold on to
+                sim.compose(composition)
+                state = form_state(sim, pi["inputs"])
+
                 
             if step > gradient_after and step % gradient_every == 0:
                 for grad in range(0, gradient_every):
@@ -307,12 +395,12 @@ def train2(sim, params, args, logger):
                     #print(f"Action range: {actions.min().item()} to {actions.max().item()}")
                     rewards = batch['rewards']
                     next_states = batch['next_states']
-                    done = batch['done'].float() # Recommended to cast this to float
-                    logger.info(f"_____Q Network Update {step}_____")
+                    done = batch['done'] # Recommended to cast this to float
+                    #logger.info(f"_____Q Network Update {step}_____")
                     state_actions = torch.cat((states, actions), dim=-1)
                     q1_current = critic1(state_actions)
                     q2_current = critic2(state_actions)
-                    
+                    mean_reward_per_grad.append(rewards.mean().item())
                     
                     plottable = q1_current.detach().cpu().numpy()  # shape (batch_size, 1)
                     if step % 100 == 0:
@@ -323,8 +411,8 @@ def train2(sim, params, args, logger):
                         q1s.append(q1_current.mean().item()) # for plotting
                         q2s.append(q2_current.mean().item())
 
-                    logger.info(f"Q1 {q1_current.detach().numpy().mean()}; Q2 {q2_current.detach().numpy().mean()}")   
-                    logger.info(f"Mean reward {rewards.detach().numpy().mean()}; 1 reward? {np.any(rewards.numpy() == 1)}")
+                    #logger.info(f"Q1 {q1_current.detach().numpy().mean()}; Q2 {q2_current.detach().numpy().mean()}")   
+                    #logger.info(f"Mean reward {rewards.detach().numpy().mean()}; 1 reward? {np.any(rewards.numpy() == 1)}")
                     
                     
                     with torch.no_grad():
@@ -334,14 +422,18 @@ def train2(sim, params, args, logger):
                         q2_next = qnetwork2(next_state_actions)
                         min_q_next = torch.min(q1_next, q2_next)
                         target_q = rewards + gamma * (1 - done) * (min_q_next - (alpha * next_log_probs))
+                        #print("rewards shape:", rewards.shape)
+                        #print("done shape:", done.shape)
+                        #print("min_q_next shape:", min_q_next.shape)
+                        #print("log_probs shape:", next_log_probs.shape)
                         # clamp the change around the reward scale
                         #target_q = torch.clamp(raw_target, -1.0, 1.0)   
                     
-                    logger.info(f"Q1 next {q1_next.mean().item()}; Q2 next {q2_next.mean().item()}")
+                    #logger.info(f"Q1 next {q1_next.mean().item()}; Q2 next {q2_next.mean().item()}")
                     q1_loss = F.mse_loss(q1_current, target_q)
                     q2_loss = F.mse_loss(q2_current, target_q)
                     q_loss = q1_loss + q2_loss # Idea from Spinningup
-                    logger.info(f"Q1 Loss {q1_loss.mean().item()}; Q2 Loss {q2_loss.detach().numpy().mean()}") 
+                    #logger.info(f"Q1 Loss {q1_loss.mean().item()}; Q2 Loss {q2_loss.detach().numpy().mean()}") 
 
                     # Here spinning up does loss_q = lossq1 + lossq2
                     
@@ -368,22 +460,38 @@ def train2(sim, params, args, logger):
                     for param, target_param in zip(critic2.parameters(), qnetwork2.parameters()):
                         target_param.data.mul_(mix)
                         target_param.data.add_((1 - mix) * param.data)
-                    logger.info(f"_____Actor Update {step}_____")
+                    #logger.info(f"_____Actor Update {step}_____")
                     # Actor update #
-                    new_actions, log_probs = policy.sample(states)  
-                    logger.info(f"Action mean {new_actions.detach().numpy().mean()}; Log prob mean {log_probs.detach().numpy().mean()};")
+                    new_actions, log_probs = policy.sample(states)
+                    stds.append(log_probs.mean().item())
+                    #logger.info(f"Action mean {new_actions.detach().numpy().mean()}; Log prob mean {log_probs.detach().numpy().mean()};")
                     new_state_actions = torch.cat((states, new_actions), dim=-1)
                     q1_val_new = critic1(new_state_actions)
                     q2_val_new = critic2(new_state_actions)
                     q_val_new = torch.min(q1_val_new, q2_val_new)
-                    logger.info(f"Q1 {q1_val_new.detach().numpy().mean()}; Q2 {q2_val_new.detach().numpy().mean()};")
+                    #logger.info(f"Q1 {q1_val_new.detach().numpy().mean()}; Q2 {q2_val_new.detach().numpy().mean()};")
                     policy_loss = (alpha * log_probs - q_val_new).mean()
-                    logger.info(f"Policy Loss {policy_loss.detach().numpy().mean()};")
+                    #logger.info(f"Policy Loss {policy_loss.detach().numpy().mean()};")
                     policy_optimizer.zero_grad()
                     policy_loss.backward()
                     torch.nn.utils.clip_grad_norm_(policy.parameters(), 5.0)
                     policy_optimizer.step()
                     
+                    ### Entropy coefficient update
+                    
+                    if "A-tuning" in params.keys():
+                        alpha_loss = -(log_alpha * (log_probs + target_entropy).detach()).mean()
+                        logger.info(f"Alpha Loss {alpha_loss.detach().numpy().mean()}; Alpha {alpha.item()};")
+                        #print(alpha.item())
+
+                        alpha_optimizer.zero_grad()
+                        alpha_loss.backward()
+                        alpha_optimizer.step()
+
+                        # Update alpha after gradient step
+                        alpha = log_alpha.exp()
+                        alphas.append(alpha.item())
+                        #
                     
                     ### plotting ###
 
@@ -397,67 +505,84 @@ def train2(sim, params, args, logger):
                 # Saving models after training #     
                 global trained_policy
                 trained_policy = policy
-                safe_save_model(trained_policy, params["configuration_save_name"], "pi", save_state_dict=True)
+                safe_save_model(trained_policy, parameter_file_name, params['algorithm']["networks_save_name"], "pi", save_state_dict=True)
                 global trained_critic1
                 trained_critic1 = critic1
-                safe_save_model(trained_critic1, params["configuration_save_name"], "Q1", save_state_dict=True)
+                safe_save_model(trained_critic1, parameter_file_name, params['algorithm']["networks_save_name"], "Q1", save_state_dict=True)
                 global trained_critic2
                 trained_critic2 = critic2
-                safe_save_model(trained_critic2, params["configuration_save_name"], "Q2", save_state_dict=True)
+                safe_save_model(trained_critic2, parameter_file_name, params['algorithm']["networks_save_name"], "Q2", save_state_dict=True)
             steps_taken += 1
             #print("Replay buffer was saved to", params["rb_save_name"])
+            
+        sim.close()
+        time.sleep(2)
+        del sim # end training loop
     except KeyboardInterrupt:
        print("Exiting")
-    plt.figure() 
+    common_path = "figures/"+parameter_file_name + "/"+params['algorithm']["networks_save_name"]
+
+    os.makedirs(common_path, exist_ok=True)
+    plt.figure()
+    
     plt.plot(range(0, len(q1s)), q1s, label="Q1")
     plt.plot(range(0, len(q2s)), q2s, label="Q2")
     plt.title("Q values")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_qs.png")                
+    plt.savefig(common_path+"/qs.png")                
     plt.figure() 
     plt.plot(range(0, len(q_losses)), q_losses)
     plt.title("Q-losses")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_qlosses.png")                
+    plt.savefig(common_path+"/qlosses.png")                
     plt.figure() 
     plt.plot(range(0, len(pi_losses)), pi_losses)
     plt.title("Policy-losses")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_policy_losses.png")
+    plt.savefig(common_path+"/policy_losses.png")
     plt.figure()         
     plt.plot(range(0, len(max_ep_rewards)), max_ep_rewards)
     plt.title("Max rewards / episode")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_max_ep_rewards.png")
+    plt.savefig(common_path+"/max_ep_rewards.png")
     plt.figure()         
     plt.plot(range(0, len(stds)), stds)
     plt.title("Policy entropy")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_stds.png")
-    plt.figure()         
-    plt.plot(range(0, len(action_magnitudes)), action_magnitudes)
-    plt.title("Action magnitudes")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_action_magnitudes.png")
+    plt.savefig(common_path+"/stds.png")
     plt.figure()         
     plt.plot(range(0, len(q1s_mean)), q1s_mean)
     plt.title("Q1 mean")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_q1_mean.png")
+    plt.savefig(common_path+"/q1_mean.png")
     q1s_mean = []
     plt.figure()         
     plt.plot(range(0, len(q1s_max)), q1s_max)
     plt.title("Q1 max")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_q1s_max.png")
+    plt.savefig(common_path+"/q1s_max.png")
     plt.figure()         
     plt.plot(range(0, len(q1s_min)), q1s_min)
     plt.title("Q1 min")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_q1s_min.png")
+    plt.savefig(common_path+"/q1s_min.png")
     plt.figure()         
     plt.plot(range(0, len(q1s_std)), q1s_std)
     plt.title("Q1 standard deviation")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_q1s_std.png")
+    plt.savefig(common_path+"/q1s_std.png")
     plt.figure()         
     plt.plot(range(0, len(episode_cum_rewards)), episode_cum_rewards)
     plt.title("Cumulative reward / episode")
-    plt.savefig("figures/"+params["configuration_save_name"]+"_episode_cum_rewards.png")
+    plt.savefig(common_path+"/episode_cum_rewards.png")
+    plt.figure()         
+    plt.plot(range(0, len(alphas)), alphas)
+    plt.title("Alpha")
+    plt.savefig(common_path+"/alpha.png")
+    plt.figure()         
+    plt.plot(range(0, len(mean_reward_per_grad)), mean_reward_per_grad)
+    plt.title("Mean reward per gradient update")
+    plt.savefig(common_path+"/mean_reward_per_grad.png")
+    
+    safe_save_model(policy, parameter_file_name, params['algorithm']["networks_save_name"], "pi", save_state_dict=True)
+    safe_save_model(critic1, parameter_file_name, params['algorithm']["networks_save_name"], "Q1", save_state_dict=True)
+    safe_save_model(critic2, parameter_file_name, params['algorithm']["networks_save_name"], "Q2", save_state_dict=True)
+
     return policy
     
 def HER_resample(sim, e, logger, mode="random_future"):
-    logger.info(f"__HER Sampling__")
+    #logger.info(f"__HER Sampling__")
     he = Episode()
     for t in range(0, len(e.steps) -1):
         if mode == "random_future":
@@ -479,10 +604,10 @@ def HER_resample(sim, e, logger, mode="random_future"):
         H_next_state[10:13] = achieved_cube_pos # goal = acheived
         he.append(H_state, e.steps[t].action, torch.tensor(HER_reward, dtype=torch.float32), torch.tensor(H_next_state, dtype=torch.float32), 0) # done = 0
         
-        logger.info(f"Current {t}, {e.steps[t].state[3:6]} with goal {e.steps[t].state[10:13]}")
-        logger.info(f"Future from step {future} acheived {achieved_cube_pos};")
-        logger.info(f"Assigned {achieved_cube_pos} to current goal {H_state[10:13]};")
-        logger.info(f"EEF at {H_state[0:3]}; Cube position {H_state[3:6]}; Reward {HER_reward}")
+        #logger.info(f"Current {t}, {e.steps[t].state[3:6]} with goal {e.steps[t].state[10:13]}")
+        #logger.info(f"Future from step {future} acheived {achieved_cube_pos};")
+        #logger.info(f"Assigned {achieved_cube_pos} to current goal {H_state[10:13]};")
+        #logger.info(f"EEF at {H_state[0:3]}; Cube position {H_state[3:6]}; Reward {HER_reward}")
     return he
 
 def give_bonus(episode, bonus, steps_from_done=None):
@@ -490,10 +615,8 @@ def give_bonus(episode, bonus, steps_from_done=None):
         steps_from_done = len(episode.steps)
     for step in range(len(episode.steps) - 1, len(episode.steps) - 1 - steps_from_done): # Excluding the last step
         episode.steps[step].reward += bonus
-    
 
-
-def train(sim, params, args): # deprecated!
+def train_deprecated(sim, params, args): # deprecated!
     if "configuration" in params.keys():
         print("Loading configuration", params["configuration"])
         critic1 = load_saved_qnetwork(params, "Q1")
@@ -722,35 +845,34 @@ def collect_teleop_data(sim, rb, rb_save_name):
     rb.append(e)
     rb.save(rb_save_name)
     return e
-def test(sim, trained_policy, num_episodes=100, render=True):
-    import time
-    sim.has_renderer = True
     
+def test(params, composition, policy):
+    # hard coded - not generalized
+    import time
+    import interface
+    pi = params["pi"]
+    sim = interface.Sim(testing=True) # will tell the sim what initial internal state to hold on to
+    sim.compose([composition])
     num_steps = 1000
-    successes = 0
-    trials = 0
+    
     print("Episodes of len", num_steps)
     input("<press any key>")
-    for episode in range(0, num_episodes):
-        state = sim.observe()
-        for step in range(0, num_steps):
-            print("State", state)
-            action = trained_policy.deterministic_action(state).detach().numpy()
-            print("Action:", action)        
-            sim.act(action)
-            reward = sim.reward()
-            state = sim.observe()
-            
-            print("Reward", reward)
-            if reward.item() == sim.reward_for_raise:
-                time.sleep(2)
-                successes += 1
-                sim.reset(has_renderer=True)
-                break
-                
-        trials += 1
-        print("Success rate:", successes/trials)
-    return successes/trials  
+    done = 0
+    state = form_state(sim, pi["inputs"])
+    for step in range(0, num_steps):
+
+        action = policy.deterministic_action(state)
+        #action = policy.sample(state)[0].detach().numpy()
+
+        sim.act(form_action(action, pi["outputs"]))
+        done = sim.done
+        
+        if done or step >= 1000:
+            time.sleep(2)
+            break
+        state = form_state(sim, pi["inputs"])
+    sim.close()
+    print("Testing visually done")
 
 def load_replay_buffer(rb_name):
     file_path = "replays/" + rb_name + ".tmp"
@@ -772,11 +894,11 @@ def load_saved_qnetwork(params, model_type):
     trained_qnetwork.load_state_dict(torch.load(qnetwork_path))
     return trained_qnetwork
 
-def safe_save_model(model, configuration_name, model_type, save_state_dict=True):
-
+def safe_save_model(model, parameters, component_name, model_type, save_state_dict=True):
+        
     # Choose the data to save
     data_to_save = model.state_dict() if save_state_dict else model
-    filename = "configurations/" + configuration_name + "/" + model_type + ".pt"
+    filename = "sac_models/" + parameters + "/" + component_name + "/" + model_type + ".pt"
     # Get the target directory from filename
     target_dir = os.path.dirname(os.path.abspath(filename))
     
@@ -792,11 +914,9 @@ def safe_save_model(model, configuration_name, model_type, save_state_dict=True)
     os.replace(temp_filename, filename)
     #print(f"Model successfully saved to {filename}")  
     
-def setup_logger(params, params_file_name):
-    if "configuration" in params.keys():
-        experiment_name = params["configuration"] + "2" + params["configuration_save_name"]
-    else:
-        experiment_name = params["configuration_save_name"]
+def setup_logger(params):
+    
+    experiment_name = "WIP"
     logger = logging.getLogger(experiment_name)  
     
     logger.setLevel(logging.INFO)

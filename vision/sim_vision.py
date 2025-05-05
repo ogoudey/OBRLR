@@ -12,65 +12,35 @@ image_id = 0
 vision_model_path = 'vision/cube_eef_detector.pt'
 
 class SimVision:
-    def __init__(self, use_sim_camera=True):
-        self.vision_model = torch.hub.load('ultralytics/yolov5', 'custom', path=vision_model_path, force_reload=True) # path is to the model originally in runs/expX/weights/
-        self.cube_position = None
+    def __init__(self, use_sim_camera=False):
+        #self.vision_model = torch.hub.load('ultralytics/yolov5', 'custom', path=vision_model_path, force_reload=True) # path is to the model originally in runs/expX/weights/
+        self.cube_position, self.eef_position = None, None
         self.reset()
         self.use_sim_camera = use_sim_camera
     
     def reset(self):
         cv2.destroyAllWindows()
         self.cube_position = None
-        self.eef_pos = None
+        self.eef_position = None
         #self.cap = cv2.VideoCapture(0)
     
             
-    def detect(self, obs, env, w_video=False):
+    def detect(self, obs, w_video=False):
         
-        if self.use_sim_camera: # Deprecated feature
-            cube_position = self.sim_camera_detect(obs, env, w_video)
-        else:
-            cube_position = obs['cube_pos']
-
-            
-        # show for teleop #
-        if w_video and self.use_sim_camera:
-            env_image = obs["sideview_image"]
-            img = Image.fromarray(env_image, 'RGB')     
-            cv2.imshow("Detections", img)
-            key = cv2.waitKey(5)
+        if self.use_sim_camera:
+            print("Take from Github. Sim vision not deprecated.")
+            raise Exception
+        else: # no camera
+            _3d_positions = obs['cube_pos']
             
         
+        #print(pp)
+        #print(_3d_positions)
+        #print(distance)
+        #print(grasp)
+        np_array = np.array(_3d_positions)
         #print("Detection:", np_array, "(length:", len(np_array), ")")
-        return cube_position
-    
-    
-        
-    def sim_camera_detect(self, obs, env, w_video):
-        env_image = obs["sideview_image"]
-        env_depth = obs["sideview_depth"]
-        img = Image.fromarray(env_image, 'RGB')
-        
-        result = self.vision_model(img)
-        
-        centers = self.box_centers(result)
-
-        if w_video:
-            rendering = result.render()[0].copy()
-            for label, (x,y) in centers.items():
-                cv2.circle(rendering, (int(x), int(y)), radius=5, color=(255,255,255))         
-                cv2.putText(
-                    rendering, label, (int(x) + 8, int(y) - 8),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1, lineType=cv2.LINE_AA
-                )
-            cv2.circle(rendering, (0, 0), radius=5, color=(0,122,255))
-            cv2.circle(rendering, (399, 399), radius=5, color=(0,122,255))
-            cv2.imshow("Detections", rendering)
-            key = cv2.waitKey(5)  
-
-        
-        
-        return self.positions_from_labelled_pixels(centers, env_depth, env.sim)
+        return np_array
     
     def box_centers(self, result):
         centers = dict()
