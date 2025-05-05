@@ -25,7 +25,7 @@ import logging
 
 torch.autograd.set_detect_anomaly(True)
 #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+logging.getLogger("robosuite").setLevel(logging.ERROR)
 
 class ReplayBuffer:
     def __init__(self, capacity=500):
@@ -908,10 +908,10 @@ def load_saved_qnetwork(params, model_type):
     return trained_qnetwork
 
 def safe_save_model(model, parameters, component_name, model_type, save_state_dict=True):
-    
+    print(parameters)
     # Choose the data to save
     data_to_save = model.state_dict() if save_state_dict else model
-    filename = "sac_models/" +  + "/" + component_name + "/" + model_type + ".pt"
+    filename = "sac_models/" + parameters + "/" + component_name + "/" + model_type + ".pt"
     # Get the target directory from filename
     target_dir = os.path.dirname(os.path.abspath(filename))
     
