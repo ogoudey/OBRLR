@@ -38,7 +38,7 @@ if __name__ == "__main__":
             composition = comp_params["compositor"]
         else:
             print("Learning", component, "with inputs", comp_params["pi"]["inputs"], "and outputs", comp_params["pi"]["outputs"])
-            pi = sac.train(comp_params, composition)
+            pi = sac.train(comp_params, composition, args.params)
             policies[component] = pi
     
     if input("Test? (y/n): ") == "y":
