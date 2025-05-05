@@ -54,8 +54,10 @@ class Sim:
         obs = self.env.reset()
 
         # set all 7 kinova joints to starting position
-        desired_joint_positions = [math.pi, 0.0, 0.0, -math.pi / 2, 0.0, -math.pi / 2, 0]
+        desired_joint_positions = [0.0, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
         self.env.robots[0].set_robot_joint_positions(desired_joint_positions)
+        self.env.sim.data.set_joint_qpos(self.env.model.mujoco_objects[0].joints[0], np.array([0.0,0.0,0.822,1.0,0.0,0.0,0.0]))
+
 
         # run 5 time steps to "settle" robot
         for _ in range(5):
@@ -107,21 +109,26 @@ class Sim:
         cube_pos = obs['cube_pos']
         eef_pos = obs['robot0_eef_pos']
         gripper_to_cube = obs['gripper_to_cube_pos']
+        gripper_qpos = obs['robot0_gripper_qpos']
         z_diff = cube_pos[2] - self.initial_cube_z
         dist = np.linalg.norm(gripper_to_cube)
 
-        # ----- reward components -----
-        r_lift = float(z_diff > 0.01 and dist < 0.04) * self.reward_for_raise
-        r_approach = 1.0 - np.tanh(5.0 * dist)  # closer = ~1, far = ~0
-        r_align_z = np.exp(-20 * abs(gripper_to_cube[2]))  # closer in Z
+        # Lift reward
+        r_lift = float(z_diff > 0.02 and dist < 0.05) * self.reward_for_raise
 
-        reward = r_lift + 0.5 * r_approach + 0.3 * r_align_z
+        # Proximity to cube
+        r_approach = 1.0 - np.tanh(5.0 * dist)
 
-        # ----- optional cost on large actions -----
-        if self.use_cost and r_lift == 0:
-            reward -= self.cost_scale * np.linalg.norm(action)
+        # Vertical alignment
+        r_align_z = np.exp(-20 * abs(gripper_to_cube[2]))
 
+        # Grasping: reward closed gripper near cube
+        gripper_closed = np.mean(gripper_qpos) < -0.1
+        r_grasp = 1.0 if dist < 0.05 and gripper_closed else 0.0
+
+        reward = r_lift + 0.5 * r_approach + 0.3 * r_align_z + 0.5 * r_grasp
         return reward
+
 
 
     def reward(self):
