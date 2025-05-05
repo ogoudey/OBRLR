@@ -174,7 +174,6 @@ class PolicyNetwork(nn.Module):
         return action
 
 def form_state(sim, params, logger=None):
-
         # Order matters for internal sim state
         state = np.array([])
         if "eef_pos" in params:
@@ -215,7 +214,6 @@ def form_action(action, params, logger=None):
     return simized_action
 
 def form_reward(sim, params):
-    
     reward = 0.0
     if "k_cube_eef_distance" in params.keys():
         reward += sim.k_cube_eef_distance(params["k_cube_eef_distance"])
