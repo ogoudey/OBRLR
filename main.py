@@ -31,6 +31,7 @@ if __name__ == "__main__":
     import soft_actor_critic as sac # includes policy network
     
     objective_components = params["objective"]
+    parameters_name = args.params.split('/')[1]
     policies = dict()
     for component in objective_components.keys():
         comp_params = objective_components[component]
@@ -38,7 +39,7 @@ if __name__ == "__main__":
             composition = comp_params["compositor"]
         else:
             print("Learning", component, "with inputs", comp_params["pi"]["inputs"], "and outputs", comp_params["pi"]["outputs"])
-            pi = sac.train(comp_params, composition, args.params)
+            pi = sac.train(comp_params, composition, parameters_name)
             policies[component] = pi
     
     if input("Test? (y/n): ") == "y":

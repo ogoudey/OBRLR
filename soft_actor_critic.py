@@ -520,11 +520,11 @@ def train(params, composition, parameter_file_name=""):
         del sim # end training loop
     except KeyboardInterrupt:
        print("Exiting")
-    common_path = "figures/"+parameters+params['algorithm']["networks_save_name"]
-    os.makedirs(os.path.dirname(common_path), exist_ok=True)
+    common_path = "figures/"+parameter_file_name + "/"+params['algorithm']["networks_save_name"]
+
+    os.makedirs(common_path, exist_ok=True)
     plt.figure()
-    if len(parameter_file_name) > 0:
-        parameters = parameter_file_name + "/"
+    
     plt.plot(range(0, len(q1s)), q1s, label="Q1")
     plt.plot(range(0, len(q2s)), q2s, label="Q2")
     plt.title("Q values")
@@ -575,9 +575,9 @@ def train(params, composition, parameter_file_name=""):
     plt.title("Mean reward per gradient update")
     plt.savefig(common_path+"/mean_reward_per_grad.png")
     
-    safe_save_model(policy, parameters, params['algorithm']["networks_save_name"], "pi", save_state_dict=True)
-    safe_save_model(critic1, parameters, params['algorithm']["networks_save_name"], "Q1", save_state_dict=True)
-    safe_save_model(critic2, parameters, params['algorithm']["networks_save_name"], "Q2", save_state_dict=True)
+    safe_save_model(policy, parameter_file_name, params['algorithm']["networks_save_name"], "pi", save_state_dict=True)
+    safe_save_model(critic1, parameter_file_name, params['algorithm']["networks_save_name"], "Q1", save_state_dict=True)
+    safe_save_model(critic2, parameter_file_name, params['algorithm']["networks_save_name"], "Q2", save_state_dict=True)
 
     return policy
     
@@ -898,7 +898,7 @@ def safe_save_model(model, parameters, component_name, model_type, save_state_di
         
     # Choose the data to save
     data_to_save = model.state_dict() if save_state_dict else model
-    filename = "sac_models/" + parameters + component_name + "/" + model_type + ".pt"
+    filename = "sac_models/" + parameters + "/" + component_name + "/" + model_type + ".pt"
     # Get the target directory from filename
     target_dir = os.path.dirname(os.path.abspath(filename))
     
