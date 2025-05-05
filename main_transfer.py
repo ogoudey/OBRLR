@@ -13,8 +13,8 @@ def main():
     ## Safety Sim ###
     
     composition = "reset_eef"
-    policy = sac.load_saved_model(working_parameters, params["objective"]["move_eef"], "pi")    
-    sac.test(params["objective"]["carry_cube"], composition, policy)
+    policy = sac.load_saved_model(working_parameters + "_copy", params["objective"]["move_eef"], "pi")    
+    sac.test(params["objective"]["move_eef"], composition, policy)
     
     
     
@@ -24,8 +24,8 @@ def main():
     args = utilities.parseConnectionArguments()
     with utilities.DeviceConnection.createTcpConnection(args) as router:
         composition = "reset_eef"
-        policy = sac.load_saved_model(working_parameters, params["objective"]["move_eef"], "pi")    
-        sac.test(params["objective"]["carry_cube"], composition, policy, router)
+        policy = sac.load_saved_model(working_parameters+"_copy", params["objective"]["move_eef"], "pi")    
+        sac.test(params["objective"]["move_eef"], composition, policy, router)
         sys.exit()
         
 if __name__ == "__main__":
