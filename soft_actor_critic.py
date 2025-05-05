@@ -845,7 +845,39 @@ def collect_teleop_data(sim, rb, rb_save_name):
     rb.append(e)
     rb.save(rb_save_name)
     return e
+
+def standardize_keyboard(key):
+    action = np.array([0.0,0.0,0.0,0.0,0.0,0.0,0.0])
     
+    speed = 0.3
+    if key == "q":
+        action[0] = speed
+    elif key == "w":
+        action[1] = speed
+    elif key == "e":
+        action[2] = speed
+    elif key == "r":
+        action[6] = speed
+    else:
+        try:
+            speed = float(trigger)
+            print("Assigning speed!")
+        except ValueError:
+            print("OOPS!")
+    return action
+
+def teleop(composition):
+    import interface
+    sim = interface.Sim(testing=True)
+    sim.compose([composition])
+    while True:
+
+        print("Cube position:", sim.get_cube_pos())
+        print("Cube goal position:", sim.initial_cube_goal())
+        print("Cube displacement:", sim.cube_cube_displacement())
+        print("Reward:", sim.cube_cube_distance(1.0))
+        sim.act(standardize_keyboard(input("Button: ")))
+        
 def test(params, composition, policy):
     # hard coded - not generalized
     import time
@@ -952,5 +984,10 @@ def setup_logger(params):
     fh.setFormatter(formatter)
     logger.addHandler(fh)
     return logger
-    
+
+### Main here is to teleop state and rewards ###
+if __name__ == "__main__":
+    composition = "midway_eef"
+    teleop(composition)
+        
     

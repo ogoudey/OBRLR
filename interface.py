@@ -46,15 +46,25 @@ class Sim:
             use_camera_obs=False,
         )
         
-    def compose(self, params):
-    
+        """
+        For copying purposes
         
-            
+
+        env = suite.make(
+            env_name="Lift",
+            robots="Kinova3",
+            has_renderer=True,
+            horizon = 1000000,
+            has_offscreen_renderer=False,
+            use_camera_obs=False,
+        )
+        
+        """
+        
+    def compose(self, params):  
         self.env.sim.data.qvel[:] = 0.0
         self.env.sim.data.qacc[:] = 0.0
-        
         self.env.sim.data.set_joint_qpos(self.env.model.mujoco_objects[0].joints[0], np.array([0.0,0.0,0.822,1.0,0.0,0.0,0.0]))
-        #
         
         if "reset_eef" in params:
             desired_joint_positions = [0.0, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
@@ -63,8 +73,6 @@ class Sim:
             self.env.sim.data.set_joint_qpos(self.env.model.mujoco_objects[0].joints[0], np.array([0.0,0.0,0.822,1.0,0.0,0.0,0.0]))
             desired_joint_positions = [-0.06872584,  1.095,  0.0,  1.43028395,  0.00620798,  0.57827479, -math.pi/2]  
         self.env.robots[0].set_robot_joint_positions(desired_joint_positions)      
-
-        
 
         # Gripper
         if "reset_eef" in params:
@@ -85,13 +93,20 @@ class Sim:
         # form initial state
         
     def set_gripper(self, env, amount):
+        if amount > 0:
+            for i in range(0, 10):
+                env.step([0,0,0,0,0,0,1])
+        if amount < 0:
+            for i in range(0, 10):
+                env.step([0,0,0,0,0,0,-1]) 
+        """
         robot = env.robots[0]
         target = robot.gripper['right'].format_action(np.array([amount]))
         for name, q in zip(robot.gripper['right'].joints, target):
             jid = env.sim.model.joint_name2id(name)
             env.sim.data.qpos[env.sim.model.jnt_qposadr[jid]] = q
         env.sim.forward()
-        
+        """
         
         
         #self.sim_vision.reset() # only needed for YOLO
@@ -233,20 +248,18 @@ if __name__ == "__main__":
                 camera_depths=False)
 
     robot = env.robots[0]
-    
-    
-    
+
     
     obs, _, _, _ = env.step([0,0,0,0,0,0,0])
-    print(obs.keys())
-    state = robot._hand_pos['right']
     
     speed = 5
     k = 1
     
         
     # Should we ever reset the environment?
+    
     while True:
+
         action = np.array([0.0,0.0,0.0,0.0])
         trigger = input("Button: ")
         if trigger == "q":
