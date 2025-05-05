@@ -2,7 +2,7 @@
 
 for parameter in "$@"; do
     echo $parameter
-    python3 main.py --params parameters/$parameter
+    python3 main.py --params parameters/$parameter --skip_test
 done
 
 echo "Bash done."

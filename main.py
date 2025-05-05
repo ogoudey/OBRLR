@@ -15,6 +15,7 @@ if __name__ == "__main__":
     parser.add_argument('--params', type=str, required=False, help="Parameters file")
     parser.add_argument('--real', action='store_true')
     parser.add_argument('--test', action='store_true')
+    parser.add_argument('--skip_test', action='store_true')
     args = parser.parse_args()
     
     
@@ -53,11 +54,11 @@ if __name__ == "__main__":
             print("Learning", component, "with inputs", comp_params["pi"]["inputs"], "and outputs", comp_params["pi"]["outputs"])
             pi = sac.train(comp_params, composition, parameters_name)
             policies[component] = pi
-    
-    if input("Test? (y/n): ") == "y":
-        composition = "reset_eef"
-        sac.test(objective_components["move_eef"], composition, policies["move_eef"])
-        composition = "midway_eef"
-        sac.test(objective_components["carry_cube"], composition, policies["carry_cube"])
+    if not args.skip_test:
+        if input("Test? (y/n): ") == "y":
+            composition = "reset_eef"
+            sac.test(objective_components["move_eef"], composition, policies["move_eef"])
+            composition = "midway_eef"
+            sac.test(objective_components["carry_cube"], composition, policies["carry_cube"])
     
     print("python done.")
