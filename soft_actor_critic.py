@@ -592,16 +592,16 @@ def HER_resample(sim, e, logger, mode="random_future"):
         
         final = e.steps[future]
         state = final.state
-        achieved_cube_pos = state[3:6]
+        achieved_cube_pos = state[3:6] # needs permissability
         new_goal = achieved_cube_pos
-        HER_reward = sim.calculate_reward(e.steps[t].state[0:3], e.steps[t].state[3:6], new_goal, e.steps[t].action)
+        HER_reward = sim.calculate_reward(e.steps[t].state[0:3], e.steps[t].state[3:6], new_goal, e.steps[t].action) # needs permissability
         
         
         H_state = copy.deepcopy(e.steps[t].state)
-        H_state[10:13] = achieved_cube_pos # goal = acheived
+        H_state[10:13] = achieved_cube_pos  # needs permissability
         H_state = torch.tensor(H_state, dtype=torch.float32)
         H_next_state = copy.deepcopy(e.steps[t].next_state)
-        H_next_state[10:13] = achieved_cube_pos # goal = acheived
+        H_next_state[10:13] = achieved_cube_pos # needs permissability
         he.append(H_state, e.steps[t].action, torch.tensor(HER_reward, dtype=torch.float32), torch.tensor(H_next_state, dtype=torch.float32), 0) # done = 0
         
         #logger.info(f"Current {t}, {e.steps[t].state[3:6]} with goal {e.steps[t].state[10:13]}")
@@ -859,19 +859,24 @@ def test(params, composition, policy):
     input("<press any key>")
     done = 0
     state = form_state(sim, pi["inputs"])
-    for step in range(0, num_steps):
+    try:
+        for step in range(0, num_steps):
 
-        action = policy.deterministic_action(state)
-        #action = policy.sample(state)[0].detach().numpy()
+            action = policy.deterministic_action(state)
+            #action = policy.sample(state)[0].detach().numpy()
 
-        sim.act(form_action(action, pi["outputs"]))
-        done = sim.done
-        
-        if done or step >= 1000:
-            time.sleep(2)
-            break
-        state = form_state(sim, pi["inputs"])
-    sim.close()
+            sim.act(form_action(action, pi["outputs"]))
+            done = sim.done
+            print(form_reward(sim, params["reward"]))
+            time.sleep(0.1)
+            
+            if done or step >= 1000:
+                time.sleep(2)
+                break
+            state = form_state(sim, pi["inputs"])
+    except KeyboardInterrupt:
+        print("Exiting...")    
+        sim.close()
     print("Testing visually done")
 
 def load_replay_buffer(rb_name):
@@ -881,24 +886,32 @@ def load_replay_buffer(rb_name):
     print("Replay buffer named", rb_name, "with", len(replay_buffer.episodes), "episodes has been loaded.")
     return replay_buffer
 
-def load_saved_policy(params):
-    trained_policy = PolicyNetwork(params['networks']['policy'])
-    policy_path = "configurations/" + params["configuration"] + "/pi.pt"
-    trained_policy.load_state_dict(torch.load(policy_path))
+def load_saved_model(parameters, params, model_type):
+    parameters = parameters.split('/')[1]
+    component_name = params["algorithm"]["networks_save_name"]
+    filename = "sac_models/" + parameters + "/" + component_name + "/"+model_type+".pt"
+    print("Generating new configuration...")
+    if model_type == "pi":
+        model = PolicyNetwork(params["networks"])
+    elif model_type == "Q1":
+        model = QNetwork(params["networks"])
+    elif model_type == "Q2":
+        model = QNetwork(params["networks"])
+    model.load_state_dict(torch.load(filename))
 
-    return trained_policy
+    return model
     
 def load_saved_qnetwork(params, model_type):
-    trained_qnetwork = QNetwork(params['networks']['q'])
-    qnetwork_path = "configurations/" + params["configuration"] + "/" + model_type + ".pt"
+    trained_qnetwork = QNetwork(params['networks'])
+    filename = "sac_models/" + parameters + "/" + component_name + "/pi.pt"
     trained_qnetwork.load_state_dict(torch.load(qnetwork_path))
     return trained_qnetwork
 
 def safe_save_model(model, parameters, component_name, model_type, save_state_dict=True):
-        
+    
     # Choose the data to save
     data_to_save = model.state_dict() if save_state_dict else model
-    filename = "sac_models/" + parameters + "/" + component_name + "/" + model_type + ".pt"
+    filename = "sac_models/" +  + "/" + component_name + "/" + model_type + ".pt"
     # Get the target directory from filename
     target_dir = os.path.dirname(os.path.abspath(filename))
     

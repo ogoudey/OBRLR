@@ -1,4 +1,4 @@
-
+import sys
 import argparse
 import yaml
 
@@ -14,6 +14,7 @@ if __name__ == "__main__":
     
     parser.add_argument('--params', type=str, required=False, help="Parameters file")
     parser.add_argument('--real', action='store_true')
+    parser.add_argument('--test', action='store_true')
     args = parser.parse_args()
     
     
@@ -29,6 +30,17 @@ if __name__ == "__main__":
     print(params["other_parameters"]["description"])
     
     import soft_actor_critic as sac # includes policy network
+    
+    if args.test:
+        composition = "reset_eef"
+        policy = sac.load_saved_model(args.params, params["objective"]["move_eef"], "pi")
+        sac.test(params["objective"]["move_eef"], composition, policy)
+        
+        composition = "midway_eef"        
+        policy = sac.load_saved_model(args.params, params["objective"]["carry_cube"], "pi")
+        sac.test(params["objective"]["carry_cube"], composition, policy)
+        sys.exit()        
+    
     
     objective_components = params["objective"]
     parameters_name = args.params.split('/')[1]
