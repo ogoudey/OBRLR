@@ -27,7 +27,7 @@ objective:
         reward:
             k_cube_eef_displacement: 0.01
         algorithm:
-            num_iterations: 4000
+            num_iterations: 10000
             len_episode: 200
             gamma: 0.99
             gradient_after: 600
@@ -62,7 +62,7 @@ objective:
         reward:
             k_cube_cube_displacement: 0.02
         algorithm:
-            num_iterations: 4000
+            num_iterations: 10000
             len_episode: 200
             gamma: 0.99
             gradient_after: 600
