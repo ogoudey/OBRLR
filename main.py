@@ -32,6 +32,8 @@ if __name__ == "__main__":
     
     import soft_actor_critic as sac # includes policy network
     
+    
+    
     if args.test:
         composition = "reset_eef"
         policy = sac.load_saved_model(args.params, params["objective"]["move_eef"], "pi")
@@ -40,9 +42,14 @@ if __name__ == "__main__":
         composition = "midway_eef"        
         policy = sac.load_saved_model(args.params, params["objective"]["carry_cube"], "pi")
         sac.test(params["objective"]["carry_cube"], composition, policy)
-        sys.exit()        
-    
-    
+        sys.exit()
+        
+    if args.real:
+        composition = "reset_eef"
+        policy = sac.load_saved_model(args.params, params["objective"]["move_eef"], "pi")    
+        sac.test(params["objective"]["carry_cube"], composition, policy, really_do=True)
+        sys.exit()
+        
     objective_components = params["objective"]
     parameters_name = args.params.split('/')[1]
     policies = dict()

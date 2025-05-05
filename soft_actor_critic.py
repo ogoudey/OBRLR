@@ -876,8 +876,11 @@ def teleop(composition):
         print("Reward:", sim.cube_cube_distance(1.0))
         sim.act(standardize_keyboard(input("Button: ")))
         
-def test(params, composition, policy):
+def test(params, composition, policy, really_do=False):
     # hard coded - not generalized
+    if really_do:
+        from real import test_cartesian
+        real_robot = test_cartesian.Real()
     import time
     import interface
     pi = params["pi"]
@@ -896,8 +899,13 @@ def test(params, composition, policy):
             #action = policy.sample(state)[0].detach().numpy()
 
             sim.act(form_action(action, pi["outputs"]))
+            if really_do:
+                real_robot.really_do(action)
+                
+                if input("Proceed(y/n)?:") == "n":
+                    return
             done = sim.done
-            print(form_reward(sim, params["reward"]))
+            #print(form_reward(sim, params["reward"]))
             time.sleep(0.1)
             
             if done or step >= 1000:
