@@ -97,7 +97,7 @@ class Episode:
 class Step:
     def __init__(self, state, action, reward, next_state, done):
         self.state = state.detach().numpy()
-        self.action = action
+        self.action = action.detach().numpy()
         self.reward = reward
         self.next_state = next_state.detach().numpy()
         self.done = done
@@ -196,26 +196,35 @@ def form_state(sim, params, logger=None):
         if "cube_goal_pos" in params:    
             state = np.concatenate((state, sim.initial_cube_goal()))
         if logger:
-            logger.info(f"{params}: {state}")
+            logger.info(f"{params}:\n{state}")
         # tensor for networks
         return torch.tensor(state, dtype=torch.float32)
 
-def form_action(action, params):
+def form_action(action, params, logger=None):
+    action = action.detach().numpy()
     # Must fit into the robosuite 'port'
     simized_action = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
     if "eef_desired_move" in params:
         simized_action[0:3] = action[0:3]
     if "gripper_move" in params:
         simized_action[6] = action[3]
+    if "all_7_joints" in params:
+        simized_action = action
+    if logger:
+        logger.info(f"{params}:\n {simized_action}") 
     return simized_action
 
 def form_reward(sim, params):
     
     reward = 0.0
-    if "k_cube_eef_displacement" in params.keys():
-        reward += sim.k_cube_eef_displacement(params["k_cube_eef_displacement"])
-    elif "k_cube_cube_displacement" in params.keys():
-        reward += sim.k_cube_cube_displacement(params["k_cube_cube_displacement"])
+    if "k_cube_eef_distance" in params.keys():
+        reward += sim.k_cube_eef_distance(params["k_cube_eef_distance"])
+    if "k_cube_cube_distance" in params.keys():
+        reward += sim.k_cube_cube_distance(params["k_cube_cube_distance"])
+    if "eef_cube_distance" in params.keys():
+        reward += sim.eef_cube_distance(params["eef_cube_distance"])
+    if "cube_cube_distance" in params.keys():
+        reward += sim.cube_cube_distance(params["cube_cube_distance"])
     return reward
 # Helpers #
 
@@ -256,6 +265,7 @@ def train(params, composition):
     q1s_std = []
     episode_cum_rewards = []
     alphas = []
+    mean_reward_per_grad = []
     ###
     
     network_parameters = params["networks"]
@@ -273,8 +283,9 @@ def train(params, composition):
             rb.left_append(he)
     else:
         print("Starting new replay buffer...")
-        rb = ReplayBuffer()        
-    ### If including a teleop episode (will this work?) ###
+        rb = ReplayBuffer()       
+         
+    ### If including a teleop episode (DEPRECATED) ###
     if "teleop" in params.keys():
         for tele_episode in range(0, params["teleop"]): # only works with teleop: 1
             e = collect_teleop_data(sim, rb, "teleop")
@@ -284,6 +295,13 @@ def train(params, composition):
             he = HER_resample(sim, e, logger, mode="final")
             rb.left_append(he)
     ###
+    
+    if "all_7_joints" in params["pi"]["outputs"]:
+        # Set mode of robosuite control to special case
+        print("Not implemented yet!")
+    else:
+        pass
+    
     if "HER" in params.keys():
         if params["HER"]:
             HER = True
@@ -291,8 +309,8 @@ def train(params, composition):
         log_alpha = torch.tensor(0.0, requires_grad=True)
         alpha_optimizer = torch.optim.Adam([log_alpha], lr=params["A-tuning"]["lr"])
         alpha = log_alpha.exp()
-        #target_entropy = -params["networks"]["action_dim"]  # or a tuned value
-        target_entropy = -1
+        target_entropy = -params["networks"]["action_dim"]  # or a tuned value
+        #target_entropy = -1
     else:
         alpha = params['algorithm']['alpha']
     alphas.append(alpha.item())
@@ -330,14 +348,13 @@ def train(params, composition):
     cum_reward = 0
     try: 
         for step in tqdm(range(1, total_steps), position=0):
-            action_, std = policy.sample(state)
-            stds.append(std.item())
-            action = action_.detach().numpy()
+            action, std = policy.sample(state)
+            
             #logger.info(f"____Taking action {step}___")
-            standardized_action = form_action(action, pi["outputs"])
+            standardized_action = form_action(action, pi["outputs"], logger)
             sim.act(standardized_action)
             #logger.info(f"Standard deviation {std}")
-            action_magnitudes.append(np.linalg.norm(action))
+            #action_magnitudes.append(np.linalg.norm(action))
             #logger.info(f"Action {action}; Magnitude {np.linalg.norm(action)}")
             reward = form_reward(sim, params["reward"])
             cum_reward += reward
@@ -383,7 +400,7 @@ def train(params, composition):
                     state_actions = torch.cat((states, actions), dim=-1)
                     q1_current = critic1(state_actions)
                     q2_current = critic2(state_actions)
-                    
+                    mean_reward_per_grad.append(rewards.mean().item())
                     
                     plottable = q1_current.detach().cpu().numpy()  # shape (batch_size, 1)
                     if step % 100 == 0:
@@ -445,7 +462,8 @@ def train(params, composition):
                         target_param.data.add_((1 - mix) * param.data)
                     #logger.info(f"_____Actor Update {step}_____")
                     # Actor update #
-                    new_actions, log_probs = policy.sample(states)  
+                    new_actions, log_probs = policy.sample(states)
+                    stds.append(log_probs.mean().item())
                     #logger.info(f"Action mean {new_actions.detach().numpy().mean()}; Log prob mean {log_probs.detach().numpy().mean()};")
                     new_state_actions = torch.cat((states, new_actions), dim=-1)
                     q1_val_new = critic1(new_state_actions)
@@ -524,10 +542,6 @@ def train(params, composition):
     plt.title("Policy entropy")
     plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_stds.png")
     plt.figure()         
-    plt.plot(range(0, len(action_magnitudes)), action_magnitudes)
-    plt.title("Action magnitudes")
-    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_action_magnitudes.png")
-    plt.figure()         
     plt.plot(range(0, len(q1s_mean)), q1s_mean)
     plt.title("Q1 mean")
     plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_q1_mean.png")
@@ -552,6 +566,11 @@ def train(params, composition):
     plt.plot(range(0, len(alphas)), alphas)
     plt.title("Alpha")
     plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_alpha.png")
+    plt.figure()         
+    plt.plot(range(0, len(mean_reward_per_grad)), mean_reward_per_grad)
+    plt.title("Mean reward per gradient update")
+    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"_mean_reward_per_grad.png")
+    
     
     safe_save_model(policy, params['algorithm']["networks_save_name"], "pi", save_state_dict=True)
     safe_save_model(critic1, params['algorithm']["networks_save_name"], "Q1", save_state_dict=True)
@@ -839,7 +858,7 @@ def test(params, composition, policy):
     state = form_state(sim, pi["inputs"])
     for step in range(0, num_steps):
 
-        action = policy.deterministic_action(state).detach().numpy()
+        action = policy.deterministic_action(state)
         #action = policy.sample(state)[0].detach().numpy()
 
         sim.act(form_action(action, pi["outputs"]))

@@ -45,8 +45,6 @@ class Sim:
             has_offscreen_renderer=False,
             use_camera_obs=False,
         )
-
-        print("Full reset!")
         
     def compose(self, params):
     
@@ -99,6 +97,18 @@ class Sim:
         #self.sim_vision.reset() # only needed for YOLO
         
         #self.mem_reward = torch.tensor(self.raise_reward(self.eef_pos, self.initial_cube, self.initial_goal), dtype=torch.float32) # shouldn't need this
+    def eef_cube_distance(self, scale):
+        displacement = self.eef_pos - self.cube_pos
+        distance = np.linalg.norm(displacement)
+        reward = -1 * distance * scale
+        return reward
+        
+    def cube_cube_distance(self, scale):
+        displacement = self.initial_goal - self.cube_pos
+        distance = np.linalg.norm(displacement)
+        reward = -1 * distance * scale
+        return reward
+
     def eef_cube_displacement(self):
         # semantic level
         return self.eef_pos - self.cube_pos
@@ -107,14 +117,14 @@ class Sim:
         # semantic level - this and the above are the same
         return self.initial_goal - self.cube_pos
     
-    def k_cube_eef_displacement(self, k):
+    def k_cube_eef_distance(self, k):
         reward = 0
         if np.linalg.norm(self.initial_goal - self.eef_pos) < k:
             reward += 1
             self.done = 1
         return reward
         
-    def k_cube_cube_displacement(self, k):
+    def k_cube_cube_distance(self, k):
         reward = 0
         #print("Cube->Cube Displacement:", self.initial_goal - self.cube_pos)
         if np.linalg.norm(self.initial_goal - self.cube_pos) < k:

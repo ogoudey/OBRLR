@@ -33,12 +33,12 @@ if __name__ == "__main__":
     objective_components = params["objective"]
     policies = dict()
     for component in objective_components.keys():
-        
-        if "compositor" in objective_components[component].keys():
-            composition = objective_components[component]["compositor"]
+        comp_params = objective_components[component]
+        if "compositor" in comp_params.keys():
+            composition = comp_params["compositor"]
         else:
-            print("Learning", component, "...")
-            pi = sac.train(objective_components[component], composition)
+            print("Learning", component, "with inputs", comp_params["pi"]["inputs"], "and outputs", comp_params["pi"]["outputs"])
+            pi = sac.train(comp_params, composition)
             policies[component] = pi
     
     if input("Test? (y/n): ") == "y":
