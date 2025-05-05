@@ -43,12 +43,7 @@ if __name__ == "__main__":
         policy = sac.load_saved_model(args.params, params["objective"]["carry_cube"], "pi")
         sac.test(params["objective"]["carry_cube"], composition, policy)
         sys.exit()
-        
-    if args.real:
-        composition = "reset_eef"
-        policy = sac.load_saved_model(args.params, params["objective"]["move_eef"], "pi")    
-        sac.test(params["objective"]["carry_cube"], composition, policy, really_do=True)
-        sys.exit()
+   
         
     objective_components = params["objective"]
     parameters_name = args.params.split('/')[1]

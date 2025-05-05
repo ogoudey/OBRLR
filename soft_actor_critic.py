@@ -876,11 +876,14 @@ def teleop(composition):
         print("Reward:", sim.cube_cube_distance(1.0))
         sim.act(standardize_keyboard(input("Button: ")))
         
-def test(params, composition, policy, really_do=False):
+def test(params, composition, policy, router=None):
     # hard coded - not generalized
-    if really_do:
+    if router:
+        really_do = True
         from real import test_cartesian
-        real_robot = test_cartesian.Real()
+        real_robot = test_cartesian.Real(router)
+    else:
+        really_do = False
     import time
     import interface
     pi = params["pi"]
@@ -915,7 +918,7 @@ def test(params, composition, policy, really_do=False):
     except KeyboardInterrupt:
         print("Exiting...")    
     sim.close()
-    real_robot.kill()
+
     print("Testing visually done")
 
 def load_replay_buffer(rb_name):
