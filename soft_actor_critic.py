@@ -520,61 +520,62 @@ def train(params, composition, parameter_file_name=""):
         del sim # end training loop
     except KeyboardInterrupt:
        print("Exiting")
-    plt.figure() 
+    plt.figure()
+    if len(parameter_file_name) > 0:
+        parameters = parameter_file_name + "/"
     plt.plot(range(0, len(q1s)), q1s, label="Q1")
     plt.plot(range(0, len(q2s)), q2s, label="Q2")
     plt.title("Q values")
-    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"/_qs.png")                
+    plt.savefig("figures/"+parameters+params['algorithm']["networks_save_name"]+"/_qs.png")                
     plt.figure() 
     plt.plot(range(0, len(q_losses)), q_losses)
     plt.title("Q-losses")
-    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"/_qlosses.png")                
+    plt.savefig("figures/"+parameters+params['algorithm']["networks_save_name"]+"/_qlosses.png")                
     plt.figure() 
     plt.plot(range(0, len(pi_losses)), pi_losses)
     plt.title("Policy-losses")
-    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"/_policy_losses.png")
+    plt.savefig("figures/"+parameters+params['algorithm']["networks_save_name"]+"/_policy_losses.png")
     plt.figure()         
     plt.plot(range(0, len(max_ep_rewards)), max_ep_rewards)
     plt.title("Max rewards / episode")
-    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"/_max_ep_rewards.png")
+    plt.savefig("figures/"+parameters+params['algorithm']["networks_save_name"]+"/_max_ep_rewards.png")
     plt.figure()         
     plt.plot(range(0, len(stds)), stds)
     plt.title("Policy entropy")
-    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"/_stds.png")
+    plt.savefig("figures/"+parameters+params['algorithm']["networks_save_name"]+"/_stds.png")
     plt.figure()         
     plt.plot(range(0, len(q1s_mean)), q1s_mean)
     plt.title("Q1 mean")
-    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"/_q1_mean.png")
+    plt.savefig("figures/"+parameters+params['algorithm']["networks_save_name"]+"/_q1_mean.png")
     q1s_mean = []
     plt.figure()         
     plt.plot(range(0, len(q1s_max)), q1s_max)
     plt.title("Q1 max")
-    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"/_q1s_max.png")
+    plt.savefig("figures/"+parameters+params['algorithm']["networks_save_name"]+"/_q1s_max.png")
     plt.figure()         
     plt.plot(range(0, len(q1s_min)), q1s_min)
     plt.title("Q1 min")
-    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"/_q1s_min.png")
+    plt.savefig("figures/"+parameters+params['algorithm']["networks_save_name"]+"/_q1s_min.png")
     plt.figure()         
     plt.plot(range(0, len(q1s_std)), q1s_std)
     plt.title("Q1 standard deviation")
-    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"/_q1s_std.png")
+    plt.savefig("figures/"+parameters+params['algorithm']["networks_save_name"]+"/_q1s_std.png")
     plt.figure()         
     plt.plot(range(0, len(episode_cum_rewards)), episode_cum_rewards)
     plt.title("Cumulative reward / episode")
-    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"/_episode_cum_rewards.png")
+    plt.savefig("figures/"+parameters+params['algorithm']["networks_save_name"]+"/_episode_cum_rewards.png")
     plt.figure()         
     plt.plot(range(0, len(alphas)), alphas)
     plt.title("Alpha")
-    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"/_alpha.png")
+    plt.savefig("figures/"+parameters+params['algorithm']["networks_save_name"]+"/_alpha.png")
     plt.figure()         
     plt.plot(range(0, len(mean_reward_per_grad)), mean_reward_per_grad)
     plt.title("Mean reward per gradient update")
-    plt.savefig("figures/"+params['algorithm']["networks_save_name"]+"/_mean_reward_per_grad.png")
+    plt.savefig("figures/"+parameters+params['algorithm']["networks_save_name"]+"/_mean_reward_per_grad.png")
     
-    
-    safe_save_model(policy, parameter_file_name, params['algorithm']["networks_save_name"], "pi", save_state_dict=True)
-    safe_save_model(critic1, parameter_file_name, params['algorithm']["networks_save_name"], "Q1", save_state_dict=True)
-    safe_save_model(critic2, parameter_file_name, params['algorithm']["networks_save_name"], "Q2", save_state_dict=True)
+    safe_save_model(policy, parameters, params['algorithm']["networks_save_name"], "pi", save_state_dict=True)
+    safe_save_model(critic1, parameters, params['algorithm']["networks_save_name"], "Q1", save_state_dict=True)
+    safe_save_model(critic2, parameters, params['algorithm']["networks_save_name"], "Q2", save_state_dict=True)
 
     return policy
     
@@ -891,9 +892,7 @@ def load_saved_qnetwork(params, model_type):
     trained_qnetwork.load_state_dict(torch.load(qnetwork_path))
     return trained_qnetwork
 
-def safe_save_model(model, parameter_file_name, component_name, model_type, save_state_dict=True):
-    if len(parameter_file_name) > 0:
-        parameters = parameters_file_name + "/"
+def safe_save_model(model, parameters, component_name, model_type, save_state_dict=True):
         
     # Choose the data to save
     data_to_save = model.state_dict() if save_state_dict else model
