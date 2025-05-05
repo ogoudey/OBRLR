@@ -914,7 +914,8 @@ def test(params, composition, policy, really_do=False):
             state = form_state(sim, pi["inputs"])
     except KeyboardInterrupt:
         print("Exiting...")    
-        sim.close()
+    sim.close()
+    real_robot.kill()
     print("Testing visually done")
 
 def load_replay_buffer(rb_name):
