@@ -8,6 +8,12 @@ from stable_baselines3.common.monitor import Monitor
 from ddpg_interface import RobosuiteGymWrapper
 from ddpg_build import make_ddpg
 
+import os
+import glob
+import pandas as pd
+import matplotlib.pyplot as plt
+
+
 def make_env_fn(cfg):
     def _init():
         env = suite.make(
@@ -40,6 +46,49 @@ def main(config_path):
     # Save
     model.save(cfg["model"]["save_path"])
     print(f"Model saved to: {cfg['model']['save_path']}.zip")
+    
+    # Plot training curves
+    logdir = cfg["logging"]["monitor_log"]
+    csvs = glob.glob(os.path.join(logdir, "*.csv"))
+    if not csvs:
+        print(f"No log CSV found in {logdir}, skipping plots.")
+        return
+    df = pd.read_csv(sorted(csvs)[-1], comment="#")
+
+    # Episode Reward per Episode
+    plt.figure()
+    plt.plot(df["r"])
+    plt.xlabel("Episode")
+    plt.ylabel("Reward")
+    plt.title("DDPG Episode Reward per Episode")
+    plt.savefig("ddpg_episode_reward.png")
+
+    # Smoothed Reward (50-episode MA)
+    df["reward_ma"] = df["r"].rolling(window=50).mean()
+    plt.figure()
+    plt.plot(df["reward_ma"])
+    plt.xlabel("Episode")
+    plt.ylabel("Reward (MA50)")
+    plt.title("DDPG Smoothed Reward (50-episode MA)")
+    plt.savefig("ddpg_smoothed_reward.png")
+
+    # Episode Length per Episode
+    plt.figure()
+    plt.plot(df["l"])
+    plt.xlabel("Episode")
+    plt.ylabel("Length")
+    plt.title("DDPG Episode Length per Episode")
+    plt.savefig("ddpg_episode_length.png")
+
+    # Episode Reward over Time
+    plt.figure()
+    plt.plot(df["t"], df["r"])
+    plt.xlabel("Time (s)")
+    plt.ylabel("Reward")
+    plt.title("DDPG Episode Reward over Time")
+    plt.savefig("ddpg_reward_over_time.png")
+
+    print("Plots saved: ddpg_episode_reward.png, ddpg_smoothed_reward.png, ddpg_episode_length.png, ddpg_reward_over_time.png")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
