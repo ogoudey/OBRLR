@@ -2,11 +2,11 @@
 import argparse
 import yaml
 
-from robosuite import suite
+import robosuite as suite
 from stable_baselines3.common.monitor import Monitor
 
-from interface import RobosuiteGymWrapper
-from ddpg import make_ddpg
+from ddpg_interface import RobosuiteGymWrapper
+from ddpg_build import make_ddpg
 
 def make_env_fn(cfg):
     def _init():
@@ -26,18 +26,18 @@ def make_env_fn(cfg):
     return _init
 
 def main(config_path):
-    # 1) Load YAML
+    # Load YAML
     with open(config_path, "r") as f:
         cfg = yaml.safe_load(f)
 
-    # 2) Build DDPG 
+    # Build DDPG 
     env_fn = make_env_fn(cfg)
     model = make_ddpg(env_fn, cfg)
 
-    # 3) Train
+    # Train
     model.learn(total_timesteps=cfg["training"]["total_timesteps"])
 
-    # 4) Save
+    # Save
     model.save(cfg["model"]["save_path"])
     print(f"Model saved to: {cfg['model']['save_path']}.zip")
 

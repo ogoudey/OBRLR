@@ -1,7 +1,7 @@
 # config.yaml
 env:
   name: "Lift"
-  robots: "Kinova"
+  robots: "Kinova3"
   reward_shaping: true
   reward_scale: 1.0
   use_camera_obs: false

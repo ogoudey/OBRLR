@@ -1,7 +1,7 @@
 # interface.py
 import numpy as np
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 
 class RobosuiteGymWrapper(gym.Env):
     """
@@ -27,13 +27,15 @@ class RobosuiteGymWrapper(gym.Env):
         
         return np.concatenate([obs_dict[k].ravel() for k in sorted(obs_dict.keys())], axis=0)
 
-    def reset(self):
+    def reset(self, *, seed = None, options = None):
+        if seed is not None:
+            self.env.seed(seed)
         obs = self.env.reset()
-        return self._flatten_obs(obs)
+        return self._flatten_obs(obs), {}
 
     def step(self, action):
         obs, reward, done, info = self.env.step(action)
-        return self._flatten_obs(obs), reward, done, info
+        return self._flatten_obs(obs), reward, done, False, info
 
     def render(self, mode="human"):
         return self.env.render(mode=mode)
