@@ -35,13 +35,19 @@ if __name__ == "__main__":
     
     
     if args.test:
-        composition = "reset_eef"
-        policy = sac.load_saved_model(args.params, params["objective"]["move_eef"], "pi")
-        sac.test(params["objective"]["move_eef"], composition, policy)
+        if "lift" in params["objective"].keys():
+            composition = "overall"
+            policy = sac.load_saved_model(args.params, params["objective"]["lift"], "pi")
+            sac.test(params["objective"]["lift"], composition, policy)
+        if "reset_eef" in params["objective"].keys():
+            composition = "reset_eef"
+            policy = sac.load_saved_model(args.params, params["objective"]["move_eef"], "pi")
+            sac.test(params["objective"]["move_eef"], composition, policy)
         
-        composition = "midway_eef"        
-        policy = sac.load_saved_model(args.params, params["objective"]["carry_cube"], "pi")
-        sac.test(params["objective"]["carry_cube"], composition, policy)
+        if "carry_cube" in params["objective"].keys():
+            composition = "midway_eef"        
+            policy = sac.load_saved_model(args.params, params["objective"]["carry_cube"], "pi")
+            sac.test(params["objective"]["carry_cube"], composition, policy)
         sys.exit()
    
         
@@ -58,9 +64,14 @@ if __name__ == "__main__":
             policies[component] = pi
     if not args.skip_test:
         if input("Test? (y/n): ") == "y":
-            composition = "reset_eef"
-            sac.test(objective_components["move_eef"], composition, policies["move_eef"])
-            composition = "midway_eef"
-            sac.test(objective_components["carry_cube"], composition, policies["carry_cube"])
+            if "move_eef" in policies.keys():
+                composition = "reset_eef"
+                sac.test(objective_components["move_eef"], composition, policies["move_eef"])
+            if "carry_cube" in policies.keys():
+                composition = "midway_eef"
+                sac.test(objective_components["carry_cube"], composition, policies["carry_cube"])
+            if "lift" in policies.keys():
+                composition = "overall"
+                sac.test(objective_components["lift"], composition, policies["lift"])
     
     print("python done.")

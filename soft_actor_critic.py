@@ -193,7 +193,7 @@ def form_state(sim, params, logger=None):
             state = np.concatenate((state, sim.get_current_grasp()))
     
         if "cube_goal_pos" in params:    
-            state = np.concatenate((state, sim.initial_cube_goal()))
+            state = np.concatenate((state, sim.get_initial_cube_goal()))
         if logger:
             logger.info(f"{params}:\n{state}")
         # tensor for networks
@@ -206,9 +206,11 @@ def form_action(action, params, logger=None):
     if "eef_desired_move" in params:
         simized_action[0:3] = action[0:3]
     if "gripper_move" in params:
+        print("moving gripper")
         simized_action[6] = action[3]
     if "all_7_joints" in params:
         simized_action = action
+
     if logger:
         logger.info(f"{params}:\n {simized_action}") 
     return simized_action
@@ -844,10 +846,9 @@ def collect_teleop_data(sim, rb, rb_save_name):
     rb.save(rb_save_name)
     return e
 
-def standardize_keyboard(key):
+def standardize_keyboard(key, speed=0.3):
     action = np.array([0.0,0.0,0.0,0.0,0.0,0.0,0.0])
     
-    speed = 0.3
     if key == "q":
         action[0] = speed
     elif key == "w":
@@ -858,23 +859,25 @@ def standardize_keyboard(key):
         action[6] = speed
     else:
         try:
-            speed = float(trigger)
+            speed = float(key)
             print("Assigning speed!")
         except ValueError:
             print("OOPS!")
-    return action
+    return action, speed
 
 def teleop(composition):
     import interface
     sim = interface.Sim(testing=True)
     sim.compose([composition])
+    speed = 0.3
     while True:
-
         print("Cube position:", sim.get_cube_pos())
         print("Cube goal position:", sim.initial_cube_goal())
         print("Cube displacement:", sim.cube_cube_displacement())
         print("Reward:", sim.cube_cube_distance(1.0))
-        sim.act(standardize_keyboard(input("Button: ")))
+        print("Gripper position:", sim.get_current_grasp())
+        action, speed = standardize_keyboard(input("Button: "), speed )
+        sim.act(action)
         
 def test(params, composition, policy, router=None):
     # hard coded - not generalized

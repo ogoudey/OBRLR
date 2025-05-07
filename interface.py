@@ -68,6 +68,8 @@ class Sim:
         
         if "reset_eef" in params:
             desired_joint_positions = [0.0, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
+        elif "overall" in params:
+            desired_joint_positions = [0.0, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
         elif "midway_eef" in params:
             desired_joint_positions = [math.pi, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
             self.env.sim.data.set_joint_qpos(self.env.model.mujoco_objects[0].joints[0], np.array([0.0,0.0,0.822,1.0,0.0,0.0,0.0]))
@@ -76,6 +78,8 @@ class Sim:
 
         # Gripper
         if "reset_eef" in params:
+            self.set_gripper(self.env, -1.0)
+        elif "overall" in params:
             self.set_gripper(self.env, -1.0)
         elif "midway_eef" in params:
             self.set_gripper(self.env, 1.0)
@@ -86,9 +90,12 @@ class Sim:
         self.initial_cube = self.obs['cube_pos']
         
         if "reset_eef" in params:
-            self.initial_goal = copy.deepcopy(self.initial_cube)
+            self.initial_cube_goal = copy.deepcopy(self.initial_cube)
+        elif "overall" in params:
+            self.initial_eef_goal = copy.deepcopy(self.initial_cube)
+            self.initial_cube_goal = np.array([self.initial_cube[0], self.initial_cube[1], self.initial_cube[2] + 0.05])
         elif "midway_eef" in params:
-            self.initial_goal = np.array([self.initial_cube[0], self.initial_cube[1], self.initial_cube[2] + 0.05]) # The actual goal
+            self.initial_cube_goal = np.array([self.initial_cube[0], self.initial_cube[1], self.initial_cube[2] + 0.05]) # The actual goal
         
         # form initial state
         
@@ -113,13 +120,13 @@ class Sim:
         
         #self.mem_reward = torch.tensor(self.raise_reward(self.eef_pos, self.initial_cube, self.initial_goal), dtype=torch.float32) # shouldn't need this
     def eef_cube_distance(self, scale):
-        displacement = self.eef_pos - self.cube_pos
+        displacement = self.eef_pos - self.cube_pos # or initial_cube_goal
         distance = np.linalg.norm(displacement)
         reward = -1 * distance * scale
         return reward
         
     def cube_cube_distance(self, scale):
-        displacement = self.initial_goal - self.cube_pos
+        displacement = self.initial_cube_goal - self.cube_pos
         distance = np.linalg.norm(displacement)
         reward = -1 * distance * scale
         return reward
@@ -130,11 +137,11 @@ class Sim:
         
     def cube_cube_displacement(self):
         # semantic level - this and the above are the same
-        return self.initial_goal - self.cube_pos
+        return self.initial_cube_goal - self.cube_pos
     
     def k_cube_eef_distance(self, k):
         reward = 0
-        if np.linalg.norm(self.initial_goal - self.eef_pos) < k:
+        if np.linalg.norm(self.initial_cube_goal - self.eef_pos) < k:
             reward += 1
             self.done = 1
         return reward
@@ -142,7 +149,7 @@ class Sim:
     def k_cube_cube_distance(self, k):
         reward = 0
         #print("Cube->Cube Displacement:", self.initial_goal - self.cube_pos)
-        if np.linalg.norm(self.initial_goal - self.cube_pos) < k:
+        if np.linalg.norm(self.initial_cube_goal - self.cube_pos) < k:
             reward += 1
             self.done = 1
         return reward
@@ -162,8 +169,9 @@ class Sim:
     
     def get_current_grasp(self):
         gripper_pos = self.obs["robot0_gripper_qpos"]  # CHANGE!!  (?)
-        opening = gripper_pos.mean()
-        print("Check that this moves, and normalize:", opening)
+        x = gripper_pos.mean()
+        opening = np.tanh((x - 0.03367756) * 10)
+        
         return np.array([opening])
 
         
@@ -178,8 +186,8 @@ class Sim:
         self.obs, _, _, _ = self.env.step(standardized_action)   
 
     
-    def initial_cube_goal(self):
-        return self.initial_goal
+    def get_initial_cube_goal(self):
+        return self.initial_cube_goal
     
     def calculate_reward(self, eef_pos, cube_pos, cube_goal, action):
         raise_reward = torch.tensor(self.raise_reward(eef_pos, cube_pos, cube_goal), dtype=torch.float32)
@@ -189,11 +197,7 @@ class Sim:
                 raise_reward -= self.torq_cost(action)
         return raise_reward
     
-    def goal(self):
-        initial = copy.deepcopy(self.initial_cube)
-        goal = [initial[0], initial[1], initial[2] + 0.05]
-        return np.array(goal)
-        
+    
         
     def reward(self):
         return self.mem_reward
@@ -259,7 +263,6 @@ if __name__ == "__main__":
     # Should we ever reset the environment?
     
     while True:
-
         action = np.array([0.0,0.0,0.0,0.0])
         trigger = input("Button: ")
         if trigger == "q":
