@@ -1,11 +1,20 @@
-## `main.py` usage
-To train or test a SAC implementation in a simulated robotic arm (Kinova) environment, run `python3 main.py` + a parameters file.
+# Usage
 
-To specify the parameters file, use `--params <path_of_yaml>`, typically `parameters/x` (without `.yaml`). In the parameters file, put `train2` for the newest training script, put `testing=True` to do visual tests at the end of training, and do `teleop` for starting a run with a teleoped "demonstration" (not currently recommended). Put `HER=True` in the parameters to use Hindsight Experience Replay.
+## Soft Actor Critic on Lift
+To train in simulation, run:
+```
+python3 main.py --params parameters/<name of yaml>
+```
+This will output figures, trained networks, logs, and a replay buffer, in places specified in the parameters file.
 
-To load a replay buffer use `--rb <path_of_replay_buffer>`, something like `--rb replays/teleop.tmp`, but this is not recommended when following SAC conventions.
+After training (unless the --skip_test option is given), you will be asked if you want to visualize the resulting policy. There, hit ^C to kill the current segment of the test (or pass `cut_component=True` to `sac.train()` and (if implemented) the episode will cut after a certain reward is acquired). Run `$ ./batch_train <params1> <params2> <params3> <params4>...` to perform a batch train.
 
-As of 4/30/25, `python3 main.py --params parameters/home` is the most likely to converge among the usages run with `main.py`.
+To transfer onto the robot, run:
+```
+python3 main_transfer.py
+```
+which is currently bound to one of the successful objectives.
+
 
 ## Sequential training
 ```
