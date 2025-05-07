@@ -61,20 +61,28 @@ class Sim:
         
         """
         
-    def compose(self, params):  
+    def compose(self, params):
+        # first, if composition should be skipped
+
+        
+        
+        
         self.env.sim.data.qvel[:] = 0.0
         self.env.sim.data.qacc[:] = 0.0
         self.env.sim.data.set_joint_qpos(self.env.model.mujoco_objects[0].joints[0], np.array([0.0,0.0,0.822,1.0,0.0,0.0,0.0]))
         
         if "reset_eef" in params:
             desired_joint_positions = [0.0, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
+            self.env.robots[0].set_robot_joint_positions(desired_joint_positions)
         elif "overall" in params:
             desired_joint_positions = [0.0, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
+            self.env.robots[0].set_robot_joint_positions(desired_joint_positions)
         elif "midway_eef" in params:
             desired_joint_positions = [math.pi, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
             self.env.sim.data.set_joint_qpos(self.env.model.mujoco_objects[0].joints[0], np.array([0.0,0.0,0.822,1.0,0.0,0.0,0.0]))
             desired_joint_positions = [-0.06872584,  1.095,  0.0,  1.43028395,  0.00620798,  0.57827479, -math.pi/2]  
-        self.env.robots[0].set_robot_joint_positions(desired_joint_positions)      
+            self.env.robots[0].set_robot_joint_positions(desired_joint_positions)
+   
 
         # Gripper
         if "reset_eef" in params:
@@ -82,6 +90,8 @@ class Sim:
         elif "overall" in params:
             self.set_gripper(self.env, -1.0)
         elif "midway_eef" in params:
+            self.set_gripper(self.env, 1.0)
+        elif "just_grip" in params:
             self.set_gripper(self.env, 1.0)
 
         # Take initial step to get obs for elsewhere and for initial_cube
@@ -97,7 +107,7 @@ class Sim:
         elif "midway_eef" in params:
             self.initial_cube_goal = np.array([self.initial_cube[0], self.initial_cube[1], self.initial_cube[2] + 0.05]) # The actual goal
         
-        # form initial state
+
         
     def set_gripper(self, env, amount):
         if amount > 0:

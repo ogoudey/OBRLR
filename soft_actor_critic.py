@@ -879,12 +879,13 @@ def teleop(composition):
         action, speed = standardize_keyboard(input("Button: "), speed )
         sim.act(action)
         
-def test(params, composition, policy, router=None):
+def test(params, composition, policy, router=None, cut_component=False):
     # hard coded - not generalized
     if router:
         really_do = True
         from real import test_cartesian
-        real_robot = test_cartesian.Real(router)
+        real_robot = test_cartesian.Real(router, composition)
+        
     else:
         really_do = False
     import time
@@ -908,15 +909,19 @@ def test(params, composition, policy, router=None):
             if really_do:
                 real_robot.really_do(action)
                 
-                if input("Proceed(y/n)?:") == "n":
-                    return
+                #if input("Proceed(y/n)?:") == "n":
+                #    return
             done = sim.done
             #print(form_reward(sim, params["reward"]))
             time.sleep(0.1)
-            
+            # One last done condition 
+            done = form_reward(sim, params["reward"]) > -.0134 and cut_component
             if done or step >= 1000:
                 time.sleep(2)
                 break
+               
+            
+            
             state = form_state(sim, pi["inputs"])
     except KeyboardInterrupt:
         print("Exiting...")    

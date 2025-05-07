@@ -49,6 +49,7 @@ def check_for_end_or_abort(e):
         or notification.action_event == 11:
             e.set()
     return check
+
  
 
 def cartesian_action_movement(base, base_cyclic, delta):
@@ -136,12 +137,16 @@ def take_and_save():
         return
 
 class Real:
-    def __init__(self, router):
+    def __init__(self, router, composition=None):
 
         self.base = BaseClient(router)
         self.base_cyclic = BaseCyclicClient(router)
         
-        self.reset_eef()
+        if composition == "reset_eef":
+            self.reset_eef()
+            self.send_gripper_speed_command(-1.0)            
+        if composition == "midway_eef":
+            self.send_gripper_speed_command(1.0)
         
     def really_do(self, action):
         action = action.detach().numpy() / 100 # [-1,1] is simple not the right coordinate frame
@@ -150,6 +155,24 @@ class Real:
            
     def reset_eef(self):
         move_to_start_position(self.base)
+        
+    def send_gripper_speed_command(self, speed, duration=0.5):
+        # Should this be wrapped?
+        gripper_cmd = Base_pb2.GripperCommand()
+        gripper_cmd.mode = Base_pb2.GRIPPER_SPEED
+        finger = gripper_cmd.gripper.finger.add()
+        finger.finger_identifier = 0
+        finger.value = -1 * speed # To be consistent with sim
+
+        # Send repeatedly during the duration to maintain command
+        start_time = time.time()
+        while time.time() - start_time < duration:
+            self.base.SendGripperCommand(gripper_cmd)
+            time.sleep(0.01)  # ~100Hz loop
+
+        # Stop gripper after duration
+        finger.value = 0.0
+        self.base.SendGripperCommand(gripper_cmd)
     
 def main2():
     r = Real()
