@@ -34,3 +34,26 @@ Run `python3 interface.py` and teleop around (`q`, `w`, `e`, `r`). To take photo
 
 ### On the Kinova
 Run `python3 real/teleop`.
+
+# PPO 
+
+To train PPO in simulation, run:
+
+```
+python3 ppo/ppo_main.py --mode train
+```
+
+Metrics during training will output to the terminal, or onto Tensorboard by running
+
+```
+tensorboard --logdir ./tensorboard_logs --port 6006
+```
+
+which can then be viewed by entering the following URL into a browser: http://localhost:6006.
+
+The trained policy can be tested on the lift task by running:
+
+```
+python3 ppo/ppo_main.py --mode test
+```
+
