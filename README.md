@@ -35,6 +35,19 @@ Run `python3 interface.py` and teleop around (`q`, `w`, `e`, `r`). To take photo
 ### On the Kinova
 Run `python3 real/teleop`.
 
+Running this section will require Stable Baselines 3. To install run ```pip install stable_baselines3```.
+
+To train DDPG in simulation, run
+```
+cd ddpg
+python ddpg_main.py --config config.yaml
+
+```
+
+Metrics during training will output to the terminal and a CSV file in /logdir
+
+# DDPG 
+
 # PPO 
 
 Running this section will require Stable Baselines 3. To install run ```pip install stable_baselines3```.
