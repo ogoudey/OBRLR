@@ -37,6 +37,8 @@ Run `python3 real/teleop`.
 
 # PPO 
 
+Running this section will require Stable Baselines 3. To install run ```pip install stable_baselines3```.
+
 To train PPO in simulation, run:
 
 ```
