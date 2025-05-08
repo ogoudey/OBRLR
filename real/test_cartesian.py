@@ -22,12 +22,11 @@ import math
 from kortex_api.autogen.client_stubs.BaseClientRpc import BaseClient
 from kortex_api.autogen.client_stubs.BaseCyclicClientRpc import BaseCyclicClient
 
-from kortex_api.autogen.messages import Base_pb2, BaseCyclic_pb2, Common_pb2
-### imports for transfer
-import soft_actor_critic as sac
+from kortex_api.autogen.messages import Base_pb2, BaseCyclic_pb2, Common_pb2, Session_pb2
 
 
-###
+from kortex_api.SessionManager import SessionManager
+from kortex_api.autogen.messages import Session_pb2 
 
 # Maximum allowed waiting time during actions (in seconds)
 TIMEOUT_DURATION = 20
@@ -50,11 +49,12 @@ def check_for_end_or_abort(e):
         or notification.action_event == 11:
             e.set()
     return check
+
  
 
 def cartesian_action_movement(base, base_cyclic, delta):
     
-    print("Starting Cartesian action movement ...")
+    print("Starting Cartesian action movement ...", delta)
     action = Base_pb2.Action()
     action.name = "Cartesian action movement"
     action.application_data = ""
@@ -137,30 +137,46 @@ def take_and_save():
         return
 
 class Real:
-    def __init__(self):
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-        import utilities
+    def __init__(self, router, composition=None):
 
-        # Parse arguments
-        args = utilities.parseConnectionArguments()
-        
-        self.router = utilities.DeviceConnection.createTcpConnection(args)
-        
         self.base = BaseClient(router)
         self.base_cyclic = BaseCyclicClient(router)
         
-        self.reset_eef()
+        if composition == "reset_eef":
+            self.reset_eef()
+            self.send_gripper_speed_command(-1.0)            
+        if composition == "midway_eef":
+            self.send_gripper_speed_command(1.0)
         
     def really_do(self, action):
+        action = action.detach().numpy() / 100 # [-1,1] is simple not the right coordinate frame
+        print(action)
         cartesian_action_movement(self.base, self.base_cyclic, action[0:3])    
-    
-    def kill(self):
-        self.router.close() 
            
-    def reset_eef():
+    def reset_eef(self):
         move_to_start_position(self.base)
+        
+    def send_gripper_speed_command(self, speed, duration=0.5):
+        # Should this be wrapped?
+        gripper_cmd = Base_pb2.GripperCommand()
+        gripper_cmd.mode = Base_pb2.GRIPPER_SPEED
+        finger = gripper_cmd.gripper.finger.add()
+        finger.finger_identifier = 0
+        finger.value = -1 * speed # To be consistent with sim
+
+        # Send repeatedly during the duration to maintain command
+        start_time = time.time()
+        while time.time() - start_time < duration:
+            self.base.SendGripperCommand(gripper_cmd)
+            time.sleep(0.01)  # ~100Hz loop
+
+        # Stop gripper after duration
+        finger.value = 0.0
+        self.base.SendGripperCommand(gripper_cmd)
     
-    
+def main2():
+    r = Real()
+    r.kill() 
 
     
 def main():
@@ -218,4 +234,4 @@ def main():
         return 0 if success else 1
 
 if __name__ == "__main__":
-    exit(main())
+    exit(main2())
