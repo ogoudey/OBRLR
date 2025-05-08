@@ -57,3 +57,5 @@ The trained policy can be tested on the lift task by running:
 python3 ppo/ppo_main.py --mode test
 ```
 
+Note: when testing, if the Robosuite GUI does not appear, ensure that ```self.has_renderer = True``` is set in ```ppo/sb_interface.py```.
+
