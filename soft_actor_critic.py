@@ -206,7 +206,6 @@ def form_action(action, params, logger=None):
     if "eef_desired_move" in params:
         simized_action[0:3] = action[0:3]
     if "gripper_move" in params:
-        print("moving gripper")
         simized_action[6] = action[3]
     if "all_7_joints" in params:
         simized_action = action
@@ -872,7 +871,7 @@ def teleop(composition):
     speed = 0.3
     while True:
         print("Cube position:", sim.get_cube_pos())
-        print("Cube goal position:", sim.initial_cube_goal())
+        print("Cube goal position:", sim.get_initial_cube_goal())
         print("Cube displacement:", sim.cube_cube_displacement())
         print("Reward:", sim.cube_cube_distance(1.0))
         print("Gripper position:", sim.get_current_grasp())
@@ -1005,7 +1004,7 @@ def setup_logger(params):
 
 ### Main here is to teleop state and rewards ###
 if __name__ == "__main__":
-    composition = "midway_eef"
+    composition = "reset_eef"
     teleop(composition)
         
     
