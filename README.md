@@ -47,6 +47,12 @@ python ddpg_main.py --config config.yaml
 ```
 
 Metrics during training will output to the terminal and a CSV file in /logdir
+The training results will be automatically plotted to the /ddpg folder
+The plot for training loss can be created by running
+```
+python plot_training_loss.py tensorboard/DDPG_1/<yourTensorboardLog> --tag train/actor_loss
+```
+
 
 # PPO 
 
