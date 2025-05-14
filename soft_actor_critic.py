@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 
 import torch.optim as optim
 
-import torchviz
 from tqdm import tqdm
 import tempfile
 
@@ -615,152 +614,6 @@ def give_bonus(episode, bonus, steps_from_done=None):
     for step in range(len(episode.steps) - 1, len(episode.steps) - 1 - steps_from_done): # Excluding the last step
         episode.steps[step].reward += bonus
 
-def train_deprecated(sim, params, args): # deprecated!
-    if "configuration" in params.keys():
-        print("Loading configuration", params["configuration"])
-        critic1 = load_saved_qnetwork(params, "Q1")
-        critic2 = load_saved_qnetwork(params, "Q2")
-        policy = load_saved_policy(params)
-    else:
-        print("Generating new configuration...")
-        policy = PolicyNetwork(params['networks']['policy'])
-        critic1 = QNetwork(params['networks']['q'])
-        critic2 = QNetwork(params['networks']['q'])
-    if "replay_buffer" in params.keys():
-        print("Loading replay buffer", params["replay_buffer"])
-        rb = load_replay_buffer(params["replay_buffer"])
-    else:
-        print("Starting new replay buffer...")
-        rb = ReplayBuffer()        
-    
-    policy_optimizer = optim.Adam(policy.parameters(), params['networks']['policy']['lr'])
-    q1_optimizer = optim.Adam(critic1.parameters(), params['networks']['q']['lr'])
-    q2_optimizer = optim.Adam(critic2.parameters(), params['networks']['q']['lr'])
-    
-    # Make 'target' networks 
-    qnetwork1 = copy.deepcopy(critic1)
-    qnetwork2 = copy.deepcopy(critic2)
-    
-    for p in qnetwork1.parameters():
-        p.requires_grad = False
-    for p in qnetwork2.parameters():
-        p.requires_grad = False  
-    
-    
-    num_iterations, num_action_episodes, len_episode = params['algorithm']['num_iterations'], params['algorithm']['num_action_episodes'], params['algorithm']['len_episode']
-    gamma, alpha = params['algorithm']['gamma'], params['algorithm']['alpha']
-    
-    avg_succ_rts = []
-    sim.env = None
-    while True:
-    
-        for iteration in tqdm(range(0, num_iterations), position=0):
-
-
-            if bool(params['algorithm']['human']):
-                collect_teleop_data(sim, rb, params['rb_save_name'])
-            else:
-                collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, params['rb_save_name'])
-            gradient_steps = params['algorithm']['num_gradient_steps']
-
-            for gradient_step in tqdm(range(0, gradient_steps), position=1, leave=False):
-                #print("Replay buffer size:", len(rb.episodes), "episodes.")
-                batch = rb.sample_batch(params['algorithm']['batch_size'])
-                states = batch['states']
-                actions = batch['actions']
-                rewards = batch['rewards']
-                next_states = batch['next_states']
-                
-                if (rewards > .99).any():
-                    #print(f"⚡️ Positive reward in this batch at gradient step {gradient_step}")
-                    pass
-                # Critic update #
-                state_actions = torch.cat((states, actions), dim=-1)
-                q1_current = critic1(state_actions)
-                q2_current = critic2(state_actions)
-                           
-                with torch.no_grad():
-                    next_actions, next_log_probs = policy.sample(next_states)
-                    next_state_actions = torch.cat((next_states, next_actions), dim=-1)
-                    q1_next = qnetwork1(next_state_actions)
-                    q2_next = qnetwork2(next_state_actions)
-                    min_q_next = torch.min(q1_next, q2_next)
-                    raw_target = rewards + gamma * (min_q_next - (alpha * next_log_probs))
-                    # clamp the change around the reward scale
-                    # target_q = torch.clamp(raw_target, -1.0, 1.0) # Not in Spinning  Up
-                    
-                #print("\nQ-next:", min_q_next.mean(), "+/-", min_q_next.std().item())
-                #print("Log_prob:", next_log_probs.mean(), "+/-", next_log_probs.std().item())
-                #print("Rewards:", rewards.mean(), "+/-", rewards.std().item())
-                q1_loss = F.mse_loss(q1_current, target_q)
-                q2_loss = F.mse_loss(q2_current, target_q)
-                assert not torch.isnan(q1_loss).any()
-                assert not torch.isnan(q2_loss).any()
-
-                # Critic Backpropogation #
-
-                q1_optimizer.zero_grad() 
-                q2_optimizer.zero_grad()    
-                q1_loss.backward()  
-                q2_loss.backward()
-                #torch.nn.utils.clip_grad_norm_(critic1.parameters(), 1.0) spinning up does not use
-                #torch.nn.utils.clip_grad_norm_(critic2.parameters(), 1.0)
-                q1_optimizer.step()
-                q2_optimizer.step()
-                
-                mix = 0.005 # Polyak average
-                for param, target_param in zip(critic1.parameters(), qnetwork1.parameters()):
-                    target_param.data.mul_(1 - mix)
-                    target_param.data.add_(mix * param.data)
-                
-                for param, target_param in zip(critic2.parameters(), qnetwork2.parameters()):
-                    target_param.data.mul_(1 - mix)
-                    target_param.data.add_(mix * param.data)
-                
-                 # Actor update #
-                new_actions, log_probs = policy.sample(states)  
-                new_state_actions = torch.cat((states, new_actions), dim=-1)
-                q1_val_new = critic1(new_state_actions)
-                q2_val_new = critic2(new_state_actions)
-                q_val_new = torch.min(q1_val_new, q2_val_new)
-                policy_loss = (alpha * log_probs - q_val_new).mean()
-                
-                #print("Policy parameters:")
-                #for name, p in policy.named_parameters():
-                #    print(f"  after backward {name}.grad norm:", None if p.grad is None else p.grad.norm().item())
-                        
-                policy_optimizer.zero_grad()
-                policy_loss.backward()
-                torch.nn.utils.clip_grad_norm_(policy.parameters(), 1.0)
-                policy_optimizer.step()
-        
-        # Saving models after training #     
-        global trained_policy
-        trained_policy = policy
-        safe_save_model(trained_policy, params["configuration_save_name"], "pi", save_state_dict=True)
-        global trained_critic1
-        trained_critic1 = critic1
-        safe_save_model(trained_critic1, params["configuration_save_name"], "Q1", save_state_dict=True)
-        global trained_critic2
-        trained_critic2 = critic2
-        safe_save_model(trained_critic2, params["configuration_save_name"], "Q2", save_state_dict=True)
-        #print("Replay buffer was saved to", params["rb_save_name"])
-        
-        """
-        # Optional interactive training...
-        inp = input("#/n: ")
-        while not inp == "n":
-            try:
-                num_iterations = int(inp)
-                left_margin += num_iterations
-                break
-            except ValueError:
-                inp = input("#/n: ")
-        if inp == "n":
-            break
-        """
-        break # Exits after num_iterations     
-   
 def collect_data_from_policy(sim, policy, rb, num_action_episodes, len_episode, rb_save_name):
     for action_episode in tqdm(range(0, num_action_episodes), position=1, leave=False):
         e = Episode()
@@ -956,8 +809,37 @@ def load_saved_qnetwork(params, model_type):
     trained_qnetwork.load_state_dict(torch.load(qnetwork_path))
     return trained_qnetwork
 
+def redundancy_check(learning_component):
+    redundant = True
+    # look through directory
+    return redundant
+
+def commit(learned_component, policy):
+    if input("Commit?(y/n): ") == "y":
+        pass
+    else:
+        return False
+    
+    data_to_save = model.state_dict()
+    filename = "committed/" + learned_component + "_policy.pt"
+    # Get the target directory from filename
+    target_dir = os.path.dirname(os.path.abspath(filename))
+    
+    # Ensure the target directory exists
+    os.makedirs(target_dir, exist_ok=True)
+    
+    # Use a temporary file in the same directory for atomic write.
+    with tempfile.NamedTemporaryFile(dir=target_dir, delete=False) as tmp_file:
+        temp_filename = tmp_file.name
+        torch.save(data_to_save, tmp_file)
+    
+    # Atomically replace the target file with the temporary file.
+    os.replace(temp_filename, filename)
+    #print(f"Model successfully saved to {filename}")  
+    return True
+    
+
 def safe_save_model(model, parameters, component_name, model_type, save_state_dict=True):
-    print(parameters)
     # Choose the data to save
     data_to_save = model.state_dict() if save_state_dict else model
     filename = "sac_models/" + parameters + "/" + component_name + "/" + model_type + ".pt"
@@ -975,7 +857,7 @@ def safe_save_model(model, parameters, component_name, model_type, save_state_di
     # Atomically replace the target file with the temporary file.
     os.replace(temp_filename, filename)
     #print(f"Model successfully saved to {filename}")  
-    
+   
 def setup_logger(params):
     
     experiment_name = "WIP"

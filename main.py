@@ -33,7 +33,7 @@ if __name__ == "__main__":
     import soft_actor_critic as sac # includes policy network
     
     
-    
+    """
     if args.test:
         if "lift" in params["objective"].keys():
             composition = "overall"
@@ -49,29 +49,39 @@ if __name__ == "__main__":
             policy = sac.load_saved_model(args.params, params["objective"]["carry_cube"], "pi")
             sac.test(params["objective"]["carry_cube"], composition, policy)
         sys.exit()
-   
-        
-    objective_components = params["objective"]
+    """
+    # Show committed policies
+
+    objective = params["objective"]
     parameters_name = args.params.split('/')[1]
     policies = dict()
-    for component in objective_components.keys():
-        comp_params = objective_components[component]
-        if "compositor" in comp_params.keys():
-            composition = comp_params["compositor"]
-        else:
-            print("Learning", component, "with inputs", comp_params["pi"]["inputs"], "and outputs", comp_params["pi"]["outputs"])
-            pi = sac.train(comp_params, composition, parameters_name)
-            policies[component] = pi
-    if not args.skip_test:
-        if input("Test? (y/n): ") == "y":
-            if "move_eef" in policies.keys():
-                composition = "reset_eef"
-                sac.test(objective_components["move_eef"], composition, policies["move_eef"])
-            if "carry_cube" in policies.keys():
-                composition = "midway_eef"
-                sac.test(objective_components["carry_cube"], composition, policies["carry_cube"])
-            if "lift" in policies.keys():
-                composition = "overall"
-                sac.test(objective_components["lift"], composition, policies["lift"])
-    
+    for learning_component in objective["components"].keys():
+        composition = objective["components"][learning_component]["composition"]
+        component = objective["components"][learning_component]["component"]
+        
+        if sac.redundancy_check(component):
+            intfc = input("Policy for " + learning_component + " already pushed. Skip?(y/n): ")
+            if intfc == "y":
+                continue
+        print("Learning", learning_component, "with inputs", component["pi"]["inputs"], "and outputs", component["pi"]["outputs"])
+        pi = sac.train(component, composition, parameters_name)
+        policies[learning_component] = pi
+        
+
+    if input("Test? (y/n): ") == "y":
+        for learned_component in policies.keys():
+            composition = objective["components"][learned_component]["composition"]
+            component = objective["components"][learned_component]["component"]
+
+            print("Testing", learned_component, "with inputs:\n\t", component["pi"]["inputs"], "and outputs:\n\t", component["pi"]["outputs"])
+            sac.test(component, composition, policies[learned_component])
+            success = sac.commit(learned_component, pi)
+            if success:
+                print(learned_component, "added!")
+                # Deal with merges.
+            else:
+                print(learned_component, "skipped.")
+                
+                
+    # Ask for push into sim_policies
     print("python done.")
