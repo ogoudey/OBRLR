@@ -1,4 +1,4 @@
-# Component-based Soft Actor Critic
+# Component-based Soft Actor Critic (or, Objective-based Reinforcement Learning for Robotics OBRLR)
 
 ## Usage
 To train in simulation, run:
