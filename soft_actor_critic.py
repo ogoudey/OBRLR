@@ -15,16 +15,17 @@ from tqdm import tqdm
 import tempfile
 
 import os
+import pathlib
 import random
 import time
 import numpy as np
 import pickle
 import copy
 import logging
-
+logging.disable(logging.WARNING)
 torch.autograd.set_detect_anomaly(True)
 #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-logging.getLogger("robosuite").setLevel(logging.ERROR)
+
 
 class ReplayBuffer:
     def __init__(self, capacity=500):
@@ -224,13 +225,7 @@ def form_reward(sim, params):
     if "cube_cube_distance" in params.keys():
         reward += sim.cube_cube_distance(params["cube_cube_distance"])
     return reward
-# Helpers #
 
-def reset_eef(composition):
-    # composition is what's in common of training and real
-    sim = interface.Sim(params['reward'], params['teleop']) # will tell the sim what initial internal state to hold on to
-    sim.compose(composition)
-#
 
 
 #       Control Scripts       #
@@ -244,7 +239,7 @@ trained_critic2 = None
 # train method based on OpenAI's spinningup
 def train(params, composition, parameter_file_name=""):
     import interface
-    sim = interface.Sim(params['teleop']) # will tell the sim what initial internal state to hold on to
+    sim = interface.Sim(params['show']) # will tell the sim what initial internal state to hold on to
     sim.compose(composition)
     
     logger = setup_logger(None)
@@ -346,6 +341,7 @@ def train(params, composition, parameter_file_name=""):
     cum_reward = 0
     try: 
         for step in tqdm(range(1, total_steps), position=0):
+            
             action, std = policy.sample(state)
             
             #logger.info(f"____Taking action {step}___")
@@ -380,7 +376,7 @@ def train(params, composition, parameter_file_name=""):
                     rb.append(he)
                 e = Episode()
                 sim.close()
-                sim = interface.Sim() # will tell the sim what initial internal state to hold on to
+                sim = interface.Sim(params['show']) # will tell the sim what initial internal state to hold on to
                 sim.compose(composition)
                 state = form_state(sim, pi["inputs"])
 
@@ -719,7 +715,7 @@ def standardize_keyboard(key, speed=0.3):
 
 def teleop(composition):
     import interface
-    sim = interface.Sim(testing=True)
+    sim = interface.Sim(show=True)
     sim.compose([composition])
     speed = 0.3
     while True:
@@ -743,7 +739,7 @@ def test(params, composition, policy, router=None, cut_component=False):
     import time
     import interface
     pi = params["pi"]
-    sim = interface.Sim(testing=True) # will tell the sim what initial internal state to hold on to
+    sim = interface.Sim(show=True) # will tell the sim what initial internal state to hold on to
     sim.compose([composition])
     num_steps = 1000
     
@@ -810,9 +806,15 @@ def load_saved_qnetwork(params, model_type):
     return trained_qnetwork
 
 def redundancy_check(learning_component):
-    redundant = True
-    # look through directory
-    return redundant
+    for policy in os.listdir("policies/committed"):
+        if learning_component + ".pt" == policy:
+            print("Policy found for component", learning_component,"in committed policies...")
+            return True
+    for policy in os.listdir("policies/pushed"):
+        if learning_component + ".pt" == policy:
+            print("Policy found for component", learning_component,"in pushed policies...")
+            return True
+    return False
 
 def commit(learned_component, policy):
     if input("Commit?(y/n): ") == "y":
@@ -820,8 +822,8 @@ def commit(learned_component, policy):
     else:
         return False
     
-    data_to_save = model.state_dict()
-    filename = "committed/" + learned_component + "_policy.pt"
+    data_to_save = policy.state_dict()
+    filename = "policies/committed/" + learned_component + ".pt"
     # Get the target directory from filename
     target_dir = os.path.dirname(os.path.abspath(filename))
     
@@ -835,9 +837,27 @@ def commit(learned_component, policy):
     
     # Atomically replace the target file with the temporary file.
     os.replace(temp_filename, filename)
+    print(f"Model saved to {filename}")
     #print(f"Model successfully saved to {filename}")  
     return True
     
+def push():
+    print(os.listdir("policies/committed"))
+    if input("Push?(y/n): ") == "y":
+        pass
+    else:
+        return False
+    src = pathlib.Path('policies/committed')
+    dst = pathlib.Path('policies/pushed')
+
+    # Make sure destination exists
+    dst.mkdir(parents=True, exist_ok=True)
+
+    for file in src.glob('*.pt'):
+        new_path = dst / file.name
+        file.rename(new_path)   # or: file.replace(new_path)
+        print(f"Moved {file} → {new_path}")
+    return True
 
 def safe_save_model(model, parameters, component_name, model_type, save_state_dict=True):
     # Choose the data to save

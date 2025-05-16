@@ -1,4 +1,20 @@
 import numpy as np
+import logging
+
+# Grab the robosuite logger
+logger = logging.getLogger("robosuite")
+
+# 1) Set it to only allow CRITICAL
+logger.setLevel(logging.CRITICAL)
+
+# 2) Remove any handlers that might already be attached
+for h in list(logger.handlers):
+    logger.removeHandler(h)
+
+# 3) Prevent any records from bubbling up to root
+logger.propagate = False
+import warnings
+warnings.filterwarnings("ignore")
 import robosuite as suite
 from robosuite.utils import transform_utils
 from robosuite.utils.placement_samplers import UniformRandomSampler
@@ -26,7 +42,7 @@ import os
 
 
 class Sim:
-    def __init__(self, testing=False):
+    def __init__(self, show=False):
     
         self.mem_reward, self.state, self.done = None, None, 0
         self.eef_pos, self.initial_cube, self.cube_pos, self.initial_goal = None, None, None, None
@@ -40,7 +56,7 @@ class Sim:
         self.env = suite.make(
             env_name="Lift",
             robots="Kinova3",
-            has_renderer=testing,
+            has_renderer=show,
             horizon = 1000000,
             has_offscreen_renderer=False,
             use_camera_obs=False,

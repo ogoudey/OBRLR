@@ -5,6 +5,7 @@ objective:
         move_eef:
             composition: "reset_eef"
             component:
+                show: False
                 A-tuning:
                     lr: 0.003
                 HER: False
@@ -28,18 +29,19 @@ objective:
                 reward:
                     eef_cube_distance: 1.0
                 algorithm:
-                    num_iterations: 500
-                    len_episode: 50
+                    num_iterations: 10000
+                    len_episode: 100
                     gamma: 0.99
-                    gradient_after: 100
-                    batch_size: 16
+                    gradient_after: 1000
+                    batch_size: 256
                     gradient_every: 50
                     save_every: 50000
                     networks_save_name: "eef->cube"
                     rb_save_name: "dump"
         carry_cube:
-            composition: "reset_eef"
+            composition: "midway_eef"
             component:
+                show: False
                 A-tuning:
                     lr: 0.003
                 HER: False
@@ -63,11 +65,11 @@ objective:
                 reward:
                     cube_cube_distance: 1.0
                 algorithm:
-                    num_iterations: 500
-                    len_episode: 50
+                    num_iterations: 10000
+                    len_episode: 100
                     gamma: 0.99
-                    gradient_after: 100
-                    batch_size: 16
+                    gradient_after: 1000
+                    batch_size: 256
                     gradient_every: 50
                     save_every: 50000
                     networks_save_name: "cube->cube"

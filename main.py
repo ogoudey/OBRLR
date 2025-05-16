@@ -1,11 +1,11 @@
 import sys
 import argparse
 import yaml
+import os
 
 import logging
+logging.disable(logging.WARNING)
 
-import warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
 
 if __name__ == "__main__":
     
@@ -20,13 +20,25 @@ if __name__ == "__main__":
     
     
     # Load parameters file
+    if not args.params:
+        print("Please include --params <parameters>")
     try:
         with open(args.params + '.yaml', "r") as f:
             params = yaml.safe_load(f)
+            parameters_name = args.params.split('/')[1]
         print("Loaded parameters")
     except Exception:
-        raise Exception("Missing parameters file.")
-        
+        try:
+            with open("parameters/" + args.params + ".yaml", "r") as f:
+                params = yaml.safe_load(f)
+                parameters_name = args.params
+        except Exception:
+            try:
+                with open(args.params, "r") as f:
+                    params = yaml.safe_load(f)
+                    parameters_name = args.params.remove_suffix(".yaml")
+            except Exception:
+                raise Exception("Rarameters file not found.")
     
     print(params["other_parameters"]["description"])
     
@@ -53,19 +65,20 @@ if __name__ == "__main__":
     # Show committed policies
 
     objective = params["objective"]
-    parameters_name = args.params.split('/')[1]
+    
     policies = dict()
     for learning_component in objective["components"].keys():
         composition = objective["components"][learning_component]["composition"]
         component = objective["components"][learning_component]["component"]
         
-        if sac.redundancy_check(component):
-            intfc = input("Policy for " + learning_component + " already pushed. Skip?(y/n): ")
+        if sac.redundancy_check(learning_component):
+            intfc = input("Skip training? (y/n): ")
             if intfc == "y":
                 continue
-        print("Learning", learning_component, "with inputs", component["pi"]["inputs"], "and outputs", component["pi"]["outputs"])
+        print("Learning", learning_component, ":\nInputs:", component["pi"]["inputs"], "\nOutputs:", component["pi"]["outputs"], "\nComposition:", composition, "\nReward:", list(component["reward"].keys()))
         pi = sac.train(component, composition, parameters_name)
         policies[learning_component] = pi
+        
         
 
     if input("Test? (y/n): ") == "y":
@@ -77,10 +90,16 @@ if __name__ == "__main__":
             sac.test(component, composition, policies[learned_component])
             success = sac.commit(learned_component, pi)
             if success:
-                print(learned_component, "added!")
+                print(learned_component, "committed!")
                 # Deal with merges.
             else:
                 print(learned_component, "skipped.")
+
+    if sac.push():
+        print("Policies pushed.")
+    else:
+        print("Committed policies not pushed.")
+    
                 
                 
     # Ask for push into sim_policies
