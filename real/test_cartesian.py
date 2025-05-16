@@ -183,7 +183,7 @@ def main():
     
     # Import the utilities helper module
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-    import utilities
+    from real import utilities
 
     # Parse arguments
     args = utilities.parseConnectionArguments()
@@ -234,4 +234,4 @@ def main():
         return 0 if success else 1
 
 if __name__ == "__main__":
-    exit(main2())
+    exit(main())
