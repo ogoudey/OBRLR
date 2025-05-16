@@ -136,6 +136,7 @@ class Sim:
         print("Epilogue: dropping...")
         if epilogue == "drop":
             self.set_gripper(-1.0)
+            time.sleep(3)
         
     def set_gripper(self, amount):
         if amount > 0:
