@@ -716,7 +716,7 @@ def standardize_keyboard(key, speed=0.3):
 def teleop(composition):
     import interface
     sim = interface.Sim(show=True)
-    sim.compose([composition])
+    sim.compose(composition)
     speed = 0.3
     while True:
         print("Cube position:", sim.get_cube_pos())
@@ -727,20 +727,19 @@ def teleop(composition):
         action, speed = standardize_keyboard(input("Button: "), speed )
         sim.act(action)
         
-def test(params, composition, policy, router=None, cut_component=False):
+def test(params, composition, policy, inter_test_memory = None, router=None, cut_component=False, epilogue=None):
     # hard coded - not generalized
     if router:
         really_do = True
         from real import test_cartesian
         real_robot = test_cartesian.Real(router, composition)
-        
     else:
         really_do = False
     import time
     import interface
     pi = params["pi"]
     sim = interface.Sim(show=True) # will tell the sim what initial internal state to hold on to
-    sim.compose([composition])
+    sim.compose(composition, inter_test_memory)
     num_steps = 1000
     
     print("Episodes of len", num_steps)
@@ -752,7 +751,6 @@ def test(params, composition, policy, router=None, cut_component=False):
 
             action = policy.deterministic_action(state)
             #action = policy.sample(state)[0].detach().numpy()
-
             sim.act(form_action(action, pi["outputs"]))
             if really_do:
                 real_robot.really_do(action)
@@ -760,7 +758,7 @@ def test(params, composition, policy, router=None, cut_component=False):
                 #if input("Proceed(y/n)?:") == "n":
                 #    return
             done = sim.done
-            #print(form_reward(sim, params["reward"]))
+            print(form_reward(sim, params["reward"]))
             time.sleep(0.1)
             # One last done condition 
             done = form_reward(sim, params["reward"]) > -.0134 and cut_component
@@ -772,10 +770,15 @@ def test(params, composition, policy, router=None, cut_component=False):
             
             state = form_state(sim, pi["inputs"])
     except KeyboardInterrupt:
-        print("Exiting...")    
+        print("Exiting...")
+    if epilogue:
+        sim.epilogue(epilogue)
+    inter_test_memory = sim.get_inter_test_memory()
     sim.close()
 
-    print("Testing visually done")
+    print("Done testing visually.")
+    return inter_test_memory
+
 
 def load_replay_buffer(rb_name):
     file_path = "replays/" + rb_name + ".tmp"
@@ -783,6 +786,16 @@ def load_replay_buffer(rb_name):
         replay_buffer = pickle.load(f)
     print("Replay buffer named", rb_name, "with", len(replay_buffer.episodes), "episodes has been loaded.")
     return replay_buffer
+
+def load_pushed_policy(learned_component, params):
+    
+    filename = "policies/pushed/" + learned_component+".pt"
+
+    policy = PolicyNetwork(params["networks"])
+
+    policy.load_state_dict(torch.load(filename))
+
+    return policy
 
 def load_saved_model(parameters, params, model_type):
     parameters = parameters.split('/')[1]

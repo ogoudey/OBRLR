@@ -15,6 +15,7 @@ if __name__ == "__main__":
     parser.add_argument('--params', type=str, required=False, help="Parameters file")
     parser.add_argument('--real', action='store_true')
     parser.add_argument('--test', action='store_true')
+    parser.add_argument('--cyclic_test', action='store_true')
     parser.add_argument('--skip_test', action='store_true')
     args = parser.parse_args()
     
@@ -43,28 +44,38 @@ if __name__ == "__main__":
     print(params["other_parameters"]["description"])
     
     import soft_actor_critic as sac # includes policy network
+
+    objective = params["objective"]   
     
-    
-    """
+    inter_test_memory = None
     if args.test:
-        if "lift" in params["objective"].keys():
-            composition = "overall"
-            policy = sac.load_saved_model(args.params, params["objective"]["lift"], "pi")
-            sac.test(params["objective"]["lift"], composition, policy)
-        if "reset_eef" in params["objective"].keys():
-            composition = "reset_eef"
-            policy = sac.load_saved_model(args.params, params["objective"]["move_eef"], "pi")
-            sac.test(params["objective"]["move_eef"], composition, policy)
-        
-        if "carry_cube" in params["objective"].keys():
-            composition = "midway_eef"        
-            policy = sac.load_saved_model(args.params, params["objective"]["carry_cube"], "pi")
-            sac.test(params["objective"]["carry_cube"], composition, policy)
+        print("Just testing...")
+        for learned_component in objective["components"].keys():
+            composition = objective["components"][learned_component]["composition"]
+            component = objective["components"][learned_component]["component"]
+            if "epilogue" in objective["components"][learned_component].keys():
+                epilogue = objective["components"][learned_component]["epilogue"]
+            else:
+                epilogue = None
+            policy = sac.load_pushed_policy(learned_component, component)
+            inter_test_memory = sac.test(component, composition, policy, inter_test_memory, epilogue=epilogue)
         sys.exit()
-    """
+    if args.cyclic_test:
+        print("Cyclic test...")
+        while True:
+            for learned_component in objective["components"].keys():
+                composition = objective["components"][learned_component]["composition"]
+                component = objective["components"][learned_component]["component"]
+                if "epilogue" in objective["components"][learned_component].keys():
+                    epilogue = objective["components"][learned_component]["epilogue"]
+                else:
+                    epilogue = None
+                policy = sac.load_pushed_policy(learned_component, component)
+                inter_test_memory = sac.test(component, composition, policy, inter_test_memory, epilogue=epilogue)
+        
     # Show committed policies
 
-    objective = params["objective"]
+
     
     policies = dict()
     for learning_component in objective["components"].keys():
@@ -72,8 +83,8 @@ if __name__ == "__main__":
         component = objective["components"][learning_component]["component"]
         
         if sac.redundancy_check(learning_component):
-            intfc = input("Skip training? (y/n): ")
-            if intfc == "y":
+            intfc = input("Still train? (y/n): ")
+            if intfc == "n":
                 continue
         print("Learning", learning_component, ":\nInputs:", component["pi"]["inputs"], "\nOutputs:", component["pi"]["outputs"], "\nComposition:", composition, "\nReward:", list(component["reward"].keys()))
         pi = sac.train(component, composition, parameters_name)

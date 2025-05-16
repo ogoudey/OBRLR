@@ -77,61 +77,73 @@ class Sim:
         
         """
         
-    def compose(self, params):
+    def compose(self, composition, inter_test_memory=None):
         # first, if composition should be skipped
-
-        
         
         
         self.env.sim.data.qvel[:] = 0.0
         self.env.sim.data.qacc[:] = 0.0
-        self.env.sim.data.set_joint_qpos(self.env.model.mujoco_objects[0].joints[0], np.array([0.0,0.0,0.822,1.0,0.0,0.0,0.0]))
         
-        if "reset_eef" in params:
+        
+        # Cube and eef
+        if "reset_eef_randomize_cube" == composition:
             desired_joint_positions = [0.0, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
             self.env.robots[0].set_robot_joint_positions(desired_joint_positions)
-        elif "overall" in params:
+            self.env.sim.data.set_joint_qpos(self.env.model.mujoco_objects[0].joints[0], np.array([(random.random()-0.5)/4,(random.random()-0.5)/4,0.822,1.0,0.0,0.0,0.0]))
+        if "reset_eef" == composition:
             desired_joint_positions = [0.0, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
             self.env.robots[0].set_robot_joint_positions(desired_joint_positions)
-        elif "midway_eef" in params:
-            desired_joint_positions = [math.pi, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
             self.env.sim.data.set_joint_qpos(self.env.model.mujoco_objects[0].joints[0], np.array([0.0,0.0,0.822,1.0,0.0,0.0,0.0]))
-            desired_joint_positions = [-0.06872584,  1.095,  0.0,  1.43028395,  0.00620798,  0.57827479, -math.pi/2]  
+        elif "overall" == composition:
+            desired_joint_positions = [0.0, math.pi/4, 0.0, math.pi/2, 0.0, math.pi/4, -math.pi/2]
             self.env.robots[0].set_robot_joint_positions(desired_joint_positions)
-   
-
+            self.env.sim.data.set_joint_qpos(self.env.model.mujoco_objects[0].joints[0], np.array([0.0,0.0,0.822,1.0,0.0,0.0,0.0]))
+        elif "midway_eef" == composition:
+            if not inter_test_memory:
+                desired_joint_positions = [-0.06872584,  1.095,  0.0,  1.43028395,  0.00620798,  0.57827479, -math.pi/2]  
+                self.env.robots[0].set_robot_joint_positions(desired_joint_positions)
+                self.env.sim.data.set_joint_qpos(self.env.model.mujoco_objects[0].joints[0], np.array([0.0,0.0,0.822,1.0,0.0,0.0,0.0]))
+        if inter_test_memory:
+            desired_joint_positions = inter_test_memory["eef_joints"]
+            self.env.robots[0].set_robot_joint_positions(desired_joint_positions)   
+            self.env.sim.data.set_joint_qpos(self.env.model.mujoco_objects[0].joints[0], np.concatenate((inter_test_memory["cube_pos"], np.array([1.0,0.0,0.0,0.0]))))
+            
         # Gripper
-        if "reset_eef" in params:
-            self.set_gripper(self.env, -1.0)
-        elif "overall" in params:
-            self.set_gripper(self.env, -1.0)
-        elif "midway_eef" in params:
-            self.set_gripper(self.env, 1.0)
-        elif "just_grip" in params:
-            self.set_gripper(self.env, 1.0)
+        if "reset_eef" == composition:
+            self.set_gripper(-1.0)
+        elif "reset_eef_randomize_cube" == composition:
+            self.set_gripper(-1.0)
+        elif "overall" == composition:
+            self.set_gripper(-1.0)
+        elif "midway_eef" == composition:
+            self.set_gripper(1.0)
+        elif "just_grip" == composition:
+            self.set_gripper(1.0)
 
         # Take initial step to get obs for elsewhere and for initial_cube
         self.obs, _, _, _ = self.env.step([0,0,0,0,0,0,0])
         
         self.initial_cube = self.obs['cube_pos']
-        
-        if "reset_eef" in params:
-            self.initial_cube_goal = copy.deepcopy(self.initial_cube)
-        elif "overall" in params:
+         
+        if "overall" == composition:
             self.initial_eef_goal = copy.deepcopy(self.initial_cube)
             self.initial_cube_goal = np.array([self.initial_cube[0], self.initial_cube[1], self.initial_cube[2] + 0.05])
-        elif "midway_eef" in params:
+        elif "midway_eef" == composition:
             self.initial_cube_goal = np.array([self.initial_cube[0], self.initial_cube[1], self.initial_cube[2] + 0.05]) # The actual goal
+    
+    def epilogue(self, epilogue):
+        # Only called during testing
+        print("Epilogue: dropping...")
+        if epilogue == "drop":
+            self.set_gripper(-1.0)
         
-
-        
-    def set_gripper(self, env, amount):
+    def set_gripper(self, amount):
         if amount > 0:
             for i in range(0, 10):
-                env.step([0,0,0,0,0,0,1])
+                self.env.step([0,0,0,0,0,0,1])
         if amount < 0:
             for i in range(0, 10):
-                env.step([0,0,0,0,0,0,-1]) 
+                self.env.step([0,0,0,0,0,0,-1]) 
         """
         robot = env.robots[0]
         target = robot.gripper['right'].format_action(np.array([amount]))
@@ -254,8 +266,17 @@ class Sim:
         img_name = 'sideview'+str(i)+'.png'
         #print("Photo-taking turned off.")
         img.save('vision/data/Robosuite3/Images' + img_name)
+
+    def get_inter_test_memory(self):
+        d = dict()
+        d["cube_pos"] = self.get_cube_pos()
+        d["eef_joints"] = self.env.robots[0].recent_qpos.current
+
+        return d
+        
     def close(self):
         self.env.close()
+        
 # helper function for taking sim photos
 def take_onboard_photo(obs):
     i = random.random()*1000
@@ -281,7 +302,7 @@ if __name__ == "__main__":
 
     
     obs, _, _, _ = env.step([0,0,0,0,0,0,0])
-    
+    env.robots[0].control.joint_pos
     speed = 5
     k = 1
     
