@@ -1,5 +1,5 @@
 # Objective-based Reinforcement Learning for Robotics
-This project is a continuation of ogoudey/final_project, a class project done in Spring 2025.
+This project is a continuation of [ogoudey/final_project](https://github.com/ogoudey/final_project), a class project done in Spring 2025.
 
 It is not too useful but does demonstrate Sim2Real transfer.
 ## Usage
