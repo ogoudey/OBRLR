@@ -29,7 +29,7 @@ To transfer onto the robot, run:
 ```
 python3 main_transfer.py
 ```
-which is currently bound to one of the successful objectives.
+which is currently bound to one of the successful objectives. But this was hard-coded and may not work as of 5/16/25.
 
 ## Installation
 1. Clone this repo.
