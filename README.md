@@ -1,15 +1,17 @@
 # Objective-based Reinforcement Learning for Robotics
+The components of the objective to raise the cube 5cm:
+
 ![image](https://github.com/user-attachments/assets/5744903c-daf2-4ab3-b73c-4dd53b483d7d)
 
+Sim2Real Transfer:
 
-This project is a continuation of [ogoudey/final_project](https://github.com/ogoudey/final_project), a class project done in Spring 2025.
-
-It is not too useful but does demonstrate Sim2Real transfer.
 ![image](https://github.com/user-attachments/assets/cf9f72f8-3367-439e-8f6f-5b29fa430cf0)
 
+Here's a [video](https://www.youtube.com/shorts/jzrwVw6-p9k).
+
+This project is an extension of [ogoudey/final_project](https://github.com/ogoudey/final_project), a group project done in Spring 2025.
+
 ## Usage
-
-
 **Training parameters** are kept in `/parameters`. They specify learning components of an objective, and how each component is setup and trained. They are also used for testing, with the `--test` or `--cyclic_test` flags. 
 
 Every run must use the `--params <name of parameters>` argument. To train in simulation, run:
