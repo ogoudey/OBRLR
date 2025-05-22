@@ -1,7 +1,12 @@
 # Objective-based Reinforcement Learning for Robotics
+![image](https://github.com/user-attachments/assets/5744903c-daf2-4ab3-b73c-4dd53b483d7d)
+
+
 This project is a continuation of [ogoudey/final_project](https://github.com/ogoudey/final_project), a class project done in Spring 2025.
 
 It is not too useful but does demonstrate Sim2Real transfer.
+![image](https://github.com/user-attachments/assets/cf9f72f8-3367-439e-8f6f-5b29fa430cf0)
+
 ## Usage
 
 
@@ -29,7 +34,7 @@ To transfer onto the robot, run:
 ```
 python3 main_transfer.py
 ```
-which is currently bound to one of the successful objectives. But this was hard-coded and may not work as of 5/16/25.
+which is currently bound to one of the successful objectives.
 
 ## Installation
 1. Clone this repo.
